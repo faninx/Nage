@@ -70,25 +70,29 @@ export async function ensureBootstrap(): Promise<BootstrapResult> {
     return result
   }
 
-  let username = process.env.ADMIN_USERNAME?.trim()
-  let password = process.env.ADMIN_PASSWORD
-
-  if (!username || !password || password.length < 6) {
-    username = "admin"
-    password = randomBytes(12).toString("base64url")
-    result.password = password
-    // 写回 .env.local，方便用户后续找回
-    writeEnvLocal({
-      ADMIN_USERNAME: username,
-      ADMIN_PASSWORD: password,
-    })
-    process.env.ADMIN_USERNAME = username
-    process.env.ADMIN_PASSWORD = password
-  }
+  const envUsername = process.env.ADMIN_USERNAME?.trim()
+  const envPassword = process.env.ADMIN_PASSWORD
+  const passwordValid = !!envPassword && envPassword.length >= 6
+  // 用 const 收窄：要么取 env，要么随机生成；不可能是 undefined
+  const password = passwordValid
+    ? envPassword
+    : (() => {
+        const generated = randomBytes(12).toString("base64url")
+        result.password = generated
+        writeEnvLocal({ ADMIN_PASSWORD: generated })
+        process.env.ADMIN_PASSWORD = generated
+        return generated
+      })()
+  const username = envUsername ?? (() => {
+    const fallback = "admin"
+    writeEnvLocal({ ADMIN_USERNAME: fallback })
+    process.env.ADMIN_USERNAME = fallback
+    return fallback
+  })()
 
   result.created = true
   result.username = username
-  if (!result.password) result.password = password!
+  if (!result.password) result.password = password
 
   const passwordHash = await hashPassword(password)
   await db.insert(users).values({
