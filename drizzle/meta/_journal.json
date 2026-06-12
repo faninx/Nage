@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1781199842916,
+      "tag": "0000_uneven_risque",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1781233574620,
+      "tag": "0001_grey_inhumans",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1781270400000,
+      "tag": "0002_add_item_price",
+      "breakpoints": true
+    }
+  ]
+}
