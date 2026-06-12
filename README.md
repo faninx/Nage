@@ -1,5 +1,9 @@
 # 纳格（Nage）
 
+[![GitHub release](https://img.shields.io/github/v/release/faninx/Nage)](https://github.com/faninx/Nage/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![Docker image](https://img.shields.io/badge/docker-nage:1.0.0-blue)](https://hub.docker.com/r/faninx/nage)
+
 一个轻量、自托管的家庭 / 小团队物品收纳管理系统。
 
 - **中文名**：纳格（拼音：Nà gé）
