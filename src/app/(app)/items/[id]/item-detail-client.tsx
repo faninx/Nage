@@ -14,6 +14,7 @@ import {
 import { deleteItemAction, updateItemAction } from "@/lib/actions/items"
 import { type ActionState } from "@/lib/actions/types"
 import { formatPrice } from "@/lib/format"
+import { expiryBucket, expiryClass, expiryLabelDetail } from "@/lib/expiry"
 import { ItemForm, type CategoryOpt } from "../item-form"
 import { type LocNode } from "@/components/location-tree-select"
 import { type TagOpt } from "@/components/tags-multi-select"
@@ -214,33 +215,14 @@ export function ItemDetailClient({ item, categories, locations, tags }: Props) {
           </div>
         )}
 
-        {item.expiredAt && item.daysUntilExpired !== null && (() => {
-          const diffDays = item.daysUntilExpired
-          const dateStr = new Date(item.expiredAt).toLocaleDateString("zh-CN")
-          let label: string
-          let cls: string
-          if (diffDays < 0) {
-            label = `已过期 ${-diffDays} 天（${dateStr}）`
-            cls = "text-muted-foreground"
-          } else if (diffDays <= 7) {
-            label = `${diffDays} 天后过期（${dateStr}）`
-            cls = "text-red-600 dark:text-red-400"
-          } else if (diffDays <= 30) {
-            label = `${diffDays} 天后过期（${dateStr}）`
-            cls = "text-orange-600 dark:text-orange-400"
-          } else {
-            label = dateStr
-            cls = "text-muted-foreground"
-          }
-          return (
-            <div className="grid grid-cols-[5rem_1fr] sm:grid-cols-[6rem_1fr] gap-3 py-2.5">
-              <div className="text-sm text-muted-foreground">
-                过期时间
-              </div>
-              <div className={cn("text-sm", cls)}>{label}</div>
+        {item.expiredAt && item.daysUntilExpired !== null && (
+          <div className="grid grid-cols-[5rem_1fr] sm:grid-cols-[6rem_1fr] gap-3 py-2.5">
+            <div className="text-sm text-muted-foreground">过期时间</div>
+            <div className={cn("text-sm", expiryClass(expiryBucket(item.daysUntilExpired)))}>
+              {expiryLabelDetail(item.daysUntilExpired, item.expiredAt)}
             </div>
-          )
-        })()}
+          </div>
+        )}
       </div>
 
       {item.description && (

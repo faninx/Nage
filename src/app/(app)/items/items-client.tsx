@@ -40,6 +40,7 @@ import {
 } from "@/lib/actions/items"
 import { type ActionState } from "@/lib/actions/types"
 import { formatPrice } from "@/lib/format"
+import { expiryBucket, expiryClass, expiryLabel } from "@/lib/expiry"
 import {
   ChevronLeft,
   ChevronRight,
@@ -57,6 +58,7 @@ import { cn } from "@/lib/utils"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import {
   ItemForm,
+  ITEM_FORM_UNSET,
   type CategoryOpt,
   type ItemFormItem,
   type ItemFormImage,
@@ -108,30 +110,27 @@ type Props = {
   pageSize: number
 }
 
-const UNSET = "__unset__"
+const UNSET = ITEM_FORM_UNSET
 const VIEW_KEY = "nage-items-view"
 type View = "list" | "card"
+
+function readView(): View {
+  try {
+    const v = localStorage.getItem(VIEW_KEY)
+    return v === "card" ? "card" : "list"
+  } catch {
+    return "list"
+  }
+}
 
 /** 过期状态 badge：按 daysUntilExpired 算颜色 + 文案 */
 function ExpiryBadge({ days, expiredAt }: { days: number | null; expiredAt: string | null }) {
   if (days == null || !expiredAt) return null
-  const dateStr = expiredAt.slice(0, 10)
-  let label: string
-  let cls: string
-  if (days < 0) {
-    label = `已过期 ${-days} 天`
-    cls = "text-muted-foreground"
-  } else if (days <= 7) {
-    label = `${days} 天后过期`
-    cls = "text-red-600 dark:text-red-400"
-  } else if (days <= 30) {
-    label = `${days} 天后过期`
-    cls = "text-orange-600 dark:text-orange-400"
-  } else {
-    label = dateStr
-    cls = "text-muted-foreground"
-  }
-  return <span className={cn("text-xs whitespace-nowrap", cls)}>📅 {label}</span>
+  return (
+    <span className={cn("text-xs whitespace-nowrap", expiryClass(expiryBucket(days)))}>
+      📅 {expiryLabel(days, expiredAt)}
+    </span>
+  )
 }
 
 function buildHref(f: ItemFilters): string {
@@ -590,6 +589,7 @@ function ItemCardGrid({
   firstImages,
   tagsByItem,
   selected,
+  deletingId,
   onToggleSelect,
   onEdit,
   onDelete,
@@ -598,6 +598,7 @@ function ItemCardGrid({
   firstImages: Record<number, string>
   tagsByItem: Record<number, ItemTag[]>
   selected: Set<number>
+  deletingId: number | null
   onToggleSelect: (id: number) => void
   onEdit: (it: ItemRow) => void
   onDelete: (it: ItemRow) => void
@@ -687,6 +688,7 @@ function ItemCardGrid({
                 variant="secondary"
                 size="icon-sm"
                 onClick={() => onDelete(it)}
+                disabled={deletingId === it.id}
                 aria-label="删除"
                 className="size-7"
               >
@@ -723,26 +725,16 @@ export function ItemsClient({
   const [, startDelete] = useTransition()
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [batchPending, setBatchPending] = useState(false)
-  const [view, setView] = useState<View>("list")
-  const [hydrated, setHydrated] = useState(false)
+  // lazy initializer：首屏就拿到 localStorage 偏好，避免「读 + 写 + hydrated」三态
+  const [view, setView] = useState<View>(readView)
   const { confirm, dialog: confirmDialog } = useConfirm()
 
-  // 视图偏好从 localStorage 读
-  useEffect(() => {
+  function changeView(next: View) {
+    setView(next)
     try {
-      const v = localStorage.getItem(VIEW_KEY)
-      if (v === "card" || v === "list") setView(v)
+      localStorage.setItem(VIEW_KEY, next)
     } catch {}
-    setHydrated(true)
-  }, [])
-
-  // 持久化
-  useEffect(() => {
-    if (!hydrated) return
-    try {
-      localStorage.setItem(VIEW_KEY, view)
-    } catch {}
-  }, [view, hydrated])
+  }
 
   // 数据变化时清掉已不在当前页的勾选
   useEffect(() => {
@@ -911,7 +903,7 @@ export function ItemsClient({
             <Button
               variant={view === "list" ? "secondary" : "ghost"}
               size="icon-sm"
-              onClick={() => setView("list")}
+              onClick={() => changeView("list")}
               aria-label="列表视图"
               aria-pressed={view === "list"}
               className="rounded-r-none"
@@ -921,7 +913,7 @@ export function ItemsClient({
             <Button
               variant={view === "card" ? "secondary" : "ghost"}
               size="icon-sm"
-              onClick={() => setView("card")}
+              onClick={() => changeView("card")}
               aria-label="卡片视图"
               aria-pressed={view === "card"}
               className="rounded-l-none"
@@ -1009,6 +1001,7 @@ export function ItemsClient({
           firstImages={data.firstImages}
           tagsByItem={data.tagsByItem}
           selected={selected}
+          deletingId={deletingId}
           onToggleSelect={toggleSelect}
           onEdit={openEdit}
           onDelete={handleDelete}
