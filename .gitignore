@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# 但要保留 env 模板（让人知道可以配哪些变量）
+!.env*.example
 
 # vercel
 .vercel
