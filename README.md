@@ -1,7 +1,7 @@
 # 纳格（Nage）
 
 [![GitHub release](https://img.shields.io/github/v/release/faninx/Nage)](https://github.com/faninx/Nage/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
 [![Docker image](https://img.shields.io/badge/docker-nage:1.0.0-blue)](https://hub.docker.com/r/faninx/nage)
 
 一个轻量、自托管的家庭 / 小团队物品收纳管理系统。
@@ -13,7 +13,7 @@
 - **鉴权**：管理员模式（无公开注册，账号由管理员后台创建）
 - **部署**：Docker + Caddy，自动 HTTPS
 - **数据库**：单文件 SQLite（`data/nage.db`）
-- **许可**：MIT
+- **许可**：GPL v3
 
 ## 特性
 

@@ -64,4 +64,4 @@ PR 模板见 [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLAT
 
 ## 📄 许可
 
-MIT
+GPL v3

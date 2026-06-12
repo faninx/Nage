@@ -72,7 +72,7 @@
 - `DEPLOY.md` - 部署指南
 - `CLAUDE.md` - 协作规范
 - `CHANGELOG.md` - 本文件
-- `LICENSE` - MIT
+- `LICENSE` - GPL v3
 
 ### v1.1 计划（未做）
 
