@@ -1,0 +1,129 @@
+import "server-only"
+import { db } from "@/lib/db"
+import { users } from "@/lib/db/schema"
+import { hashPassword } from "./password"
+import { generateSecret } from "./jwt"
+import { sql } from "drizzle-orm"
+import { eq } from "drizzle-orm"
+import { migrate } from "drizzle-orm/better-sqlite3/migrator"
+import { randomBytes } from "node:crypto"
+import { writeFileSync, existsSync, readFileSync } from "node:fs"
+import { resolve } from "node:path"
+
+const ENV_LOCAL_PATH = resolve(process.cwd(), ".env.local")
+
+type BootstrapResult = {
+  created: boolean
+  username?: string
+  password?: string
+  jwtSecretGenerated: boolean
+  message?: string
+}
+
+/**
+ * 首次启动时建管理员 + 检查 JWT_SECRET。
+ * 幂等：可重复调用，已有管理员时直接返回。
+ */
+export async function ensureBootstrap(): Promise<BootstrapResult> {
+  const result: BootstrapResult = {
+    created: false,
+    jwtSecretGenerated: false,
+  }
+
+  // 1. 检查/补 JWT_SECRET
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) {
+    const secret = generateSecret()
+    process.env.JWT_SECRET = secret
+    writeEnvLocal({ JWT_SECRET: secret })
+    result.jwtSecretGenerated = true
+  }
+
+  // 2. 跑迁移（首次启动空 DB 时建表；已有 DB 时幂等跳过）
+  //    生产用 migrate() 跑 drizzle/*.sql；本地 dev 已 push 过也无副作用
+  //    兼容 db:push 建表的情况：__drizzle_migrations 没记录但表已存在 → 忽略"already exists"
+  //    兼容运维手跑过部分 SQL 的情况：列已删 → 忽略"no such column/table/index"
+  try {
+    migrate(db, { migrationsFolder: resolve(process.cwd(), "drizzle") })
+  } catch (e) {
+    // DrizzleError 顶层 message 不含具体 SQL 错误；真正的错误在 cause.message
+    const cause = e instanceof Error && "cause" in e ? e.cause : null
+    const allMsgs = [
+      e instanceof Error ? e.message : String(e),
+      cause instanceof Error ? cause.message : "",
+    ].join("\n")
+    if (
+      /already exists/i.test(allMsgs) ||
+      /no such (column|table|index)/i.test(allMsgs)
+    ) {
+      // 库已就绪（db:push 建的或运维手跑过部分 SQL），继续 bootstrap
+    } else {
+      throw e
+    }
+  }
+
+  // 3. 检查/建管理员
+  const [{ count }] = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(users)
+
+  if (count > 0) {
+    return result
+  }
+
+  let username = process.env.ADMIN_USERNAME?.trim()
+  let password = process.env.ADMIN_PASSWORD
+
+  if (!username || !password || password.length < 6) {
+    username = "admin"
+    password = randomBytes(12).toString("base64url")
+    result.password = password
+    // 写回 .env.local，方便用户后续找回
+    writeEnvLocal({
+      ADMIN_USERNAME: username,
+      ADMIN_PASSWORD: password,
+    })
+    process.env.ADMIN_USERNAME = username
+    process.env.ADMIN_PASSWORD = password
+  }
+
+  result.created = true
+  result.username = username
+  if (!result.password) result.password = password!
+
+  const passwordHash = await hashPassword(password)
+  await db.insert(users).values({
+    username,
+    passwordHash,
+    nickname: "管理员",
+    role: "admin",
+    isActive: true,
+  })
+
+  return result
+}
+
+function writeEnvLocal(patch: Record<string, string>) {
+  let content = ""
+  if (existsSync(ENV_LOCAL_PATH)) {
+    content = readFileSync(ENV_LOCAL_PATH, "utf8")
+  }
+
+  for (const [key, value] of Object.entries(patch)) {
+    const re = new RegExp(`^${key}=.*$`, "m")
+    if (re.test(content)) {
+      content = content.replace(re, `${key}=${value}`)
+    } else {
+      content += `\n${key}=${value}\n`
+    }
+  }
+  writeFileSync(ENV_LOCAL_PATH, content, "utf8")
+}
+
+export async function findUserByUsername(username: string) {
+  const [u] = await db
+    .select()
+    .from(users)
+    .where(eq(users.username, username))
+    .limit(1)
+  return u
+}
