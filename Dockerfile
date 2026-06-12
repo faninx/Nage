@@ -17,7 +17,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc* ./
-RUN pnpm install --frozen-lockfile
+# cache mount：跨 build 复用 pnpm store，避免重下大 binary 包（@esbuild、sharp、geist）
+# 用 npmmirror.com（国内 CDN）替代默认 registry——默认 registry 在构建容器内下载慢到 27 KiB/s，
+# 经常 timeout；npmmirror 实测 2 MB/s
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked     pnpm config set registry https://registry.npmmirror.com/     && pnpm install --frozen-lockfile --prefer-offline
 
 # ─── Stage 2: 构建 Next.js 应用 ─────────────────────────────────
 FROM node:24-bookworm-slim AS builder
