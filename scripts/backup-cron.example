@@ -1,0 +1,17 @@
+# 纳格定时备份（crontab）
+#
+# 安装方法：
+#   crontab -e
+#   把下面整段粘进去，保存
+#
+# 假设：
+#   - 项目目录在 /opt/nage
+#   - 备份输出到 ./backups/（已通过 volume 挂到 /app/backups）
+#
+# 想每天跑 3 次（每 8 小时）+ 保留 60 天：把下面这段的频率和 KEEP_DAYS 调一下
+
+# 每天凌晨 3 点整跑一次
+0 3 * * * cd /opt/nage && BACKUP_KEEP_DAYS=30 bash scripts/backup.sh >> /opt/nage/logs/backup.log 2>&1
+
+# 6 小时一次（想保险可以加；6*4=24 最多 4 次/天）
+# 0 */6 * * * cd /opt/nage && BACKUP_KEEP_DAYS=14 bash scripts/backup.sh >> /opt/nage/logs/backup.log 2>&1

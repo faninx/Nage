@@ -1,0 +1,58 @@
+# 纳格（Nage）Caddy 反向代理
+#
+# 用法：
+#   1. 把下面的 nage.example.com 换成你的域名
+#   2. DNS A 记录指到这台 VPS
+#   3. 80/443 端口在防火墙/安全组里放行
+#   4. Caddy 会自动向 Let's Encrypt 申请证书并续期
+#
+# 多域名：在最上面再加一行 `nage2.example.com { ... }` 即可
+
+# ─── 把 nage.example.com 换成你的域名 ──────────────────────────
+nage.example.com {
+    # 自动 HTTPS（首次启动需要外网可达 80 端口做 ACME 校验）
+    encode zstd gzip
+
+    # 反向代理到 app 容器
+    reverse_proxy nage-app:3000 {
+        # 健康检查：Caddy 会定期 GET /login
+        health_uri /login
+        health_interval 30s
+        health_timeout 5s
+
+        # 长连接超时
+        transport http {
+            dial_timeout 10s
+            response_header_timeout 30s
+        }
+    }
+
+    # Next.js 静态资源直接走 Caddy，不打 app（可选优化）
+    # @assets path /_next/static/* /uploads/*
+    # handle @assets {
+    #     reverse_proxy nage-app:3000
+    # }
+
+    # 安全头（可按需删减）
+    header {
+        # 隐藏暴露版本信息
+        -Server
+        # 禁止被 iframe 嵌套（防点击劫持）
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # 移除 HSTS 看心情——HTTPS 全程用的话建议加
+        # Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+
+    # 访问日志（写到 stdout，docker logs 能看到）
+    log {
+        output stdout
+        level INFO
+    }
+}
+
+# 可选：HTTP → HTTPS 强制重定向（Caddy 默认就做了，注释掉如果想保留 80）
+# http://nage.example.com {
+#     redir https://nage.example.com{uri} permanent
+# }

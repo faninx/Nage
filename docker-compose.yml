@@ -1,0 +1,78 @@
+# 纳格（Nage）单机部署
+# - app:  Next.js 16 应用（端口 3000，仅内网）
+# - caddy: 反向代理 + 自动 HTTPS（80/443 对外）
+#
+# 启动：docker compose up -d
+# 升级：docker compose pull && docker compose up -d（自建镜像则 docker compose build）
+# 备份：bash scripts/backup.sh  或  crontab 调 scripts/backup.sh
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: nage:latest
+    container_name: nage-app
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?请在 .env 里设置 ADMIN_USERNAME}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?请在 .env 里设置 ADMIN_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?请在 .env 里设置 JWT_SECRET（最少 32 字节）}
+    env_file:
+      - path: ./.env
+        required: true
+    volumes:
+      # SQLite 数据库
+      - nage-data:/app/data
+      # 用户上传图片
+      - nage-uploads:/app/public/uploads
+      # 备份目录（容器内落地，外部访问通过 docker cp 或 volume 挂到主机）
+      - nage-backups:/app/backups
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/login"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+    networks:
+      - nage-net
+    # 备份时需要执行 sqlite3 .backup，必须能进容器
+    # 常规运维：docker exec -it nage-app bash
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: nage-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Caddy 申请证书时给 Let's Encrypt 的邮箱
+      ACME_EMAIL: ${ACME_EMAIL:?请在 .env 里设置 ACME_EMAIL}
+    volumes:
+      # Caddyfile 挂进去
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy 的证书 + 站点配置（持久化，否则每次重启都要重申请）
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      - nage-net
+
+volumes:
+  nage-data:
+  nage-uploads:
+  nage-backups:
+  caddy-data:
+  caddy-config:
+
+networks:
+  nage-net:
+    driver: bridge

@@ -39,3 +39,16 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# nage runtime data
+/data
+/public/uploads/*
+!/public/uploads/.gitkeep
+
+
+# claude code (per-developer)
+/.claude/
+
+# dev-only debug scripts
+/scripts/debug-*.mjs
+/scripts/loader-hook.mjs
