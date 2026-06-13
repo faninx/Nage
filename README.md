@@ -11,7 +11,7 @@
 - **版本**：v1.0.0
 - **栈**：Next.js 16 · React 19 · SQLite · Drizzle ORM · Tailwind v4 · shadcn/ui
 - **鉴权**：管理员模式（无公开注册，账号由管理员后台创建）
-- **部署**：Docker + Caddy，自动 HTTPS
+- **部署**：Docker Compose，反代 BYO（Caddy / Nginx / Cloudflare Tunnel 任选）
 - **数据库**：单文件 SQLite（`data/nage.db`）
 - **许可**：GPL v3
 
@@ -26,7 +26,7 @@
 - 📷 **二维码**：每件物品一个，扫码直达详情
 - 📥 **数据导入导出**：JSON 格式，跨实例可迁移
 - 🔐 **管理员模式**：无公开注册，账号由管理员创建，密码 bcrypt 哈希，登录 5 次失败锁 10 分钟
-- 🐳 **一键部署**：单 VPS + Docker Compose + Caddy 自动 HTTPS
+- 🐳 **一键部署**：Docker Compose，应用只听 :3000；HTTPS 由你的反代负责
 - 💾 **热备份**：`sqlite3 .backup` 在线备份，30 天滚动，cron 自动
 
 ## 快速开始（开发）
@@ -59,16 +59,17 @@ node node_modules/tsx/dist/cli.mjs scripts/test-items.ts
 
 > 完整文档：[DEPLOY.md](./DEPLOY.md)
 
-1 台 VPS + Docker Compose + Caddy（自动 HTTPS）：
+1 台 VPS + Docker Compose，**反代自己挑**（[示例](./docs/examples/)）：
 
 ```bash
 # 1. 准备：DNS 解析、装 Docker、复制代码到 /opt/nage
-# 2. 配 .env（必须设 ADMIN_PASSWORD / JWT_SECRET / ACME_EMAIL）
-# 3. 起
+# 2. 配 .env（必须设 ADMIN_PASSWORD / JWT_SECRET）
+# 3. 起 Nage
 docker compose up -d --build
-# 4. 等 Caddy 签完证书
-docker compose logs -f caddy
-# 看到 "obtained certificate" 后打开 https://你的域名
+# 4. 验证 Nage 本身通了
+curl -I http://127.0.0.1:3000/login   # 应返回 200
+# 5. 架反代（Caddy / Nginx / Cloudflare Tunnel 任选）
+#    按 docs/examples/ 里对应文档配
 ```
 
 备份：
@@ -119,8 +120,8 @@ scripts/                  # E2E 测试 + 备份/恢复
 - [x] **M2** 物品 CRUD + 图片上传 + 搜索筛选
 - [x] **M3** 仪表盘（最近更新 + 快过期）
 - [x] **M4** 二维码 + 扫码 + 数据导入导出
-- [x] **M5** Docker 化 + Caddy 反代 + 备份脚本 + 部署文档
-- [ ] **v1.1** 借出归还 / 暗黑模式 / PWA（待规划）
+- [x] **M5** Docker 化 + 备份脚本 + 部署文档（反代 v1.0.1 起 BYO）
+- [ ] **v1.1** 借出归还 / 保质期增强 / PWA（待规划）
 
 详细变更历史见 [CHANGELOG.md](./CHANGELOG.md)。
 部署指南见 [DEPLOY.md](./DEPLOY.md)。

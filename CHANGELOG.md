@@ -5,6 +5,28 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.1] - 2026-06-14
+
+### 变更
+
+- **移除 Caddy 集成**：v1.0.0 把 Caddy 写进 `docker-compose.yml` + 项目根 `Caddyfile`。v1.0.1 起反代由用户自己解决,`docker-compose.yml` 只剩 `app` 一个 service。`Caddyfile` 移到 [`docs/examples/caddy/`](./docs/examples/caddy/) 当参考
+- **新增反代示例**：[`docs/examples/`](./docs/examples/) 下加 Caddy / Nginx / Cloudflare Tunnel 三个方案,每个带 README + 配置文件
+- **端口可配置**:`docker-compose.yml` 的主机端口用 `APP_PORT` 环境变量,默认 3000
+- **`ACME_EMAIL` 废弃**:`.env.local.example` 加注释说明,不影响已部署实例(它们要么不再升级,要么用自己加的 `ACME_EMAIL` 跑反代)
+- **DEPLOY.md 大改**:架构图 / 防火墙 / 启动流程 / 故障排查全部去掉 Caddy 假设,加新章节"架反代"
+- **README / PRD 同步**:header 描述、特性列表、技术栈、里程碑更新
+- **版本号**:1.0.0 → 1.0.1
+
+### 升级指引
+
+1. `git pull`
+2. 如果你之前用 compose 里集成的 Caddy:
+   - 保留你自己的 Caddy / Nginx 配置(`docker-compose.yml` 里 Caddy 段被删,但你之前的反代还在跑)
+   - 把 `app` service 的 `expose: ["3000"]` 改成 `ports: ["3000:3000"]`(直接调 compose 不便的话,`docker compose up -d` 时 compose 会自己加默认端口)
+3. 如果你之前用裸反代(没跑过 compose 里的 caddy service):什么都不用做,新 compose 对你来说完全等价
+4. 如果之前 `.env` 里配了 `ACME_EMAIL`:留着没用,删掉也无副作用
+5. `docker compose up -d`
+
 ## [1.0.0] - 2026-06-12
 
 首次正式发布。v1.0 范围 = PRD §3.1 MVP + §4 完整功能。

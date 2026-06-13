@@ -1,0 +1,79 @@
+# 纳格（Nage）Caddy 反向代理示例
+#
+# 用法（两种，任选其一）：
+#
+# ─── A. Caddy 装在主机上（最常见）────────────────────────────────
+#   1. 装 Caddy：参考 https://caddyserver.com/docs/install
+#   2. 把这个文件放到 /etc/caddy/Caddyfile（覆盖默认）
+#   3. 把下面的 nage.example.com 换成你的域名
+#   4. DNS A 记录指到这台主机
+#   5. 主机防火墙放行 80/443
+#   6. sudo systemctl reload caddy
+#   → Caddy 会自动向 Let's Encrypt 申请证书
+#   7. 如果改了 APP_PORT（默认 3000），下面 reverse_proxy 也要对应改
+#
+# ─── B. Caddy 跑在容器里（独立 compose）─────────────────────────
+#   新建 docker-compose.proxy.yml：
+#     services:
+#       caddy:
+#         image: caddy:2-alpine
+#         container_name: nage-caddy
+#         restart: unless-stopped
+#         ports: ["80:80", "443:443"]
+#         volumes:
+#           - ./Caddyfile:/etc/caddy/Caddyfile:ro
+#           - caddy-data:/data
+#           - caddy-config:/config
+#         networks: [nage-net]
+#     volumes:
+#       caddy-data:
+#       caddy-config:
+#   然后跑：
+#     docker compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
+#
+# 多域名：在最上面再加一行 `nage2.example.com { ... }` 即可
+
+# ─── 把 nage.example.com 换成你的域名 ──────────────────────────
+nage.example.com {
+    # 自动 HTTPS（首次启动需要外网可达 80 端口做 ACME 校验）
+    encode zstd gzip
+
+    # 反向代理到 Nage 应用
+    # 主机装 Caddy：127.0.0.1:3000（compose 已 ports 绑定到主机 3000）
+    # 容器装 Caddy：nage-app:3000（需 networks: nage-net）
+    reverse_proxy 127.0.0.1:3000 {
+        # 健康检查：Caddy 会定期 GET /login
+        health_uri /login
+        health_interval 30s
+        health_timeout 5s
+
+        # 长连接超时
+        transport http {
+            dial_timeout 10s
+            response_header_timeout 30s
+        }
+    }
+
+    # 安全头（可按需删减）
+    header {
+        # 隐藏暴露版本信息
+        -Server
+        # 禁止被 iframe 嵌套（防点击劫持）
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # 移除 HSTS 看心情——HTTPS 全程用的话建议加
+        # Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+
+    # 访问日志（写到 stdout，docker logs / journalctl 能看到）
+    log {
+        output stdout
+        level INFO
+    }
+}
+
+# 可选：HTTP → HTTPS 强制重定向（Caddy 默认就做了，注释掉如果想保留 80）
+# http://nage.example.com {
+#     redir https://nage.example.com{uri} permanent
+# }

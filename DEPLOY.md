@@ -2,9 +2,9 @@
 
 > 目标读者：想把这套系统部署到公网 VPS 的管理员。
 >
-> 范围：单 VPS + Caddy（自动 HTTPS）+ Docker Compose。
+> 范围：单 VPS + Docker Compose，**反代由你自己解决**（Caddy / Nginx / Cloudflare Tunnel 任选）。
 >
-> 预计耗时：第一次 30-60 分钟，主要是 DNS 解析和等证书签发。
+> 预计耗时：第一次 30-60 分钟，主要是 DNS 解析和反代配证书。
 
 ---
 
@@ -15,14 +15,14 @@
       │ HTTPS (443)
       ▼
 ┌──────────────┐
-│  Caddy 容器  │  ← 自动向 Let's Encrypt 申请证书、自动续期
-│  (反代)      │
+│  反代         │  ← 你自己架（Caddy / Nginx / Cloudflare Tunnel 任选）
+│  (你维护)    │     自动申请 / 续期 Let's Encrypt 证书
 └──────┬───────┘
-       │ HTTP (3000，内网)
+       │ HTTP (3000，主机 / 容器网络)
        ▼
 ┌──────────────┐
-│  app 容器    │  ← Next.js 16 + Node 24
-│  (Next.js)   │
+│  nage-app    │  ← Next.js 16 + Node 24（docker compose 管）
+│  容器        │
 └──────┬───────┘
        │ 本机 socket（命名 volume）
        ▼
@@ -38,7 +38,6 @@
 | `/app/data` | `nage-data` | SQLite 数据库 |
 | `/app/public/uploads` | `nage-uploads` | 用户上传的图片 |
 | `/app/backups` | `nage-backups` | 定时备份 |
-| `/data` / `/config` | `caddy-data` / `caddy-config` | Caddy 证书 |
 
 ---
 
@@ -49,15 +48,17 @@
 - 1 vCPU / 1GB RAM 起步（2GB 留点余量）
 - 系统：Ubuntu 24.04 LTS 或 Debian 12（bookworm）
 - 公网 IPv4
-- 域名（备案与否不影响 Caddy 申请证书，但国内服务器走 Cloudflare 之类可能更稳）
+- 域名（备案与否取决于你用谁做反代 —— Cloudflare 边缘可绕开部分限制）
 
 ### 1.2 防火墙放行
 
-- `22`（SSH）
-- `80`（Caddy 申请 / 续期证书）
-- `443`（HTTPS）
+| 端口 | 用途 |
+|------|------|
+| `22` | SSH |
+| `80` | 反代申请 / 续期 ACME 证书（用 Cloudflare Tunnel 则不需要） |
+| `443` | HTTPS |
 
-如果用云厂商安全组（AWS SG / 阿里云 ECS 安全组 / 腾讯云 CVM 安全组），**也要**放行这 3 个。
+如果用云厂商安全组（AWS SG / 阿里云 ECS 安全组 / 腾讯云 CVM 安全组），**也要**放行这些。
 
 ```bash
 # UFW 示例
@@ -75,7 +76,7 @@ sudo ufw enable
 nage.example.com  →  203.0.113.10
 ```
 
-**等 5-10 分钟让 DNS 生效**再继续。Caddy 申请证书时必须能解析到这台机器。
+**等 5-10 分钟让 DNS 生效**再继续。反代申请证书时必须能解析到这台机器。
 
 ---
 
@@ -104,10 +105,10 @@ sudo mkdir -p /opt/nage && sudo chown $USER:$USER /opt/nage
 cd /opt/nage
 
 # 方式 A：git clone
-git clone <你的仓库 URL> .
+git clone https://github.com/faninx/Nage.git .
 
 # 方式 B：scp 上传（开发机执行）
-# scp -r ./{Dockerfile,docker-compose.yml,Caddyfile,.dockerignore,src,public,package.json,pnpm-lock.yaml,pnpm-workspace.yaml,scripts,next.config.ts,drizzle.config.ts} user@your-vps:/opt/nage/
+# scp -r ./{Dockerfile,docker-compose.yml,.dockerignore,src,public,package.json,pnpm-lock.yaml,pnpm-workspace.yaml,scripts,next.config.ts,drizzle.config.ts,.env.local.example} user@your-vps:/opt/nage/
 ```
 
 ### 3.2 生成强密钥
@@ -134,12 +135,13 @@ nano .env
 ADMIN_USERNAME=admin
 ADMIN_PASSWORD=<一个强密码，至少 12 位>
 JWT_SECRET=<上一步 openssl 输出的整串>
-ACME_EMAIL=you@example.com
 ```
 
 > `ADMIN_PASSWORD` 是第一次启动时自动建管理员用的。**首次启动后改密码**就去 Web 界面 "成员" 页面改管理员密码，或者删库重启用新密码。
+>
+> v1.0.1 起不再需要 `ACME_EMAIL`（Caddy 已不集成，反代自己管证书）。
 
-### 3.4 启动
+### 3.4 启动 Nage
 
 ```bash
 docker compose up -d --build
@@ -153,18 +155,40 @@ docker compose up -d --build
 # 实时日志
 docker compose logs -f
 
-# 只看 app
-docker compose logs -f app
-
 # 健康状态
 docker compose ps
 ```
 
-看到 `app` 状态是 `Up (healthy)`、`caddy` 状态是 `Up` 就差不多了。
+看到 `app` 状态是 `Up (healthy)` 就说明 Nage 本身起来了。
 
-Caddy 第一次启动会去申请证书，**日志里出现 `obtained certificate` 就说明 HTTPS 通了**。
+**直接访问验证**（绕过反代）：
 
-### 3.6 首次登录
+```bash
+curl -I http://127.0.0.1:3000/login
+# 期望：HTTP/1.1 200
+```
+
+> 主机端口默认 3000。如要改成 8080，`.env` 里加 `APP_PORT=8080` 再 `docker compose up -d`，反代配置里 `127.0.0.1:3000` 也对应改。
+
+这一步通了再架反代。
+
+### 3.6 架反代（关键步骤）
+
+挑一个方案，按对应文档配：
+
+| 方案 | 文档 | 一句话特点 |
+|------|------|-----------|
+| Caddy | [docs/examples/caddy/](./docs/examples/caddy/) | 配置最少，自动 HTTPS |
+| Nginx | [docs/examples/nginx/](./docs/examples/nginx/) | 用的人最多，文档全 |
+| Cloudflare Tunnel | [docs/examples/cloudflare-tunnel/](./docs/examples/cloudflare-tunnel/) | 不需主机开 80/443 |
+
+所有方案的共同前提：
+
+- Nage 已经 `Up (healthy)`
+- `http://127.0.0.1:3000` 能访问
+- 域名 DNS 已解析到主机 IP
+
+### 3.7 首次登录
 
 浏览器打开 `https://nage.example.com`，用 `.env` 里的 `ADMIN_USERNAME` / `ADMIN_PASSWORD` 登录。
 
@@ -250,13 +274,13 @@ docker compose up -d
 # 旧的容器会被替换，volume 数据不变
 ```
 
-### 5.2 用预构建镜像（如果推到 Docker Hub 了）
+### 5.2 用预构建镜像（从 ghcr.io）
 
-修改 `docker-compose.yml` 顶部的 `build:` 段，改成：
+修改 `docker-compose.yml` 顶部的 `app` service，把 `build:` 段删掉，`image:` 改成：
 
 ```yaml
 app:
-  image: yourname/nage:1.2.0   # 改成你的镜像
+  image: ghcr.io/faninx/nage:1.0.1   # 改成你想用的版本
   # 删掉 build: 段
 ```
 
@@ -272,7 +296,7 @@ docker compose up -d
 ```bash
 docker compose down
 # 切回旧代码 / 旧镜像
-git checkout v1.1.0
+git checkout v1.0.0
 docker compose build app
 docker compose up -d
 # DB 不会动（volume 里的 nage.db 是兼容的）
@@ -290,7 +314,7 @@ docker compose up -d
 docker compose ps
 
 # 看资源占用
-docker stats nage-app nage-caddy
+docker stats nage-app
 
 # 实时日志
 docker compose logs -f --tail=100 app
@@ -313,30 +337,42 @@ docker compose down -v  # ⚠️ 删 volume，连备份一起没
 
 ## 7. 故障排查
 
-### 7.1 访问 502 Bad Gateway
+### 7.1 访问 502 Bad Gateway / 反代连不上
 
 ```bash
-# app 容器没起或崩了
+# 1. Nage 本身是否健康
 docker compose ps app
 docker compose logs --tail=200 app
+
+# 2. 主机能否直连 Nage
+curl -I http://127.0.0.1:3000/login
+# 不通 → Nage 没起来或崩了，回去查 7.0
+# 通 → 反代配置错了，回去查反代文档
 ```
 
 常见原因：
+
 - `JWT_SECRET` 改了但没重启 → `docker compose restart app`
 - 启动时打印 `ECONNREFUSED` → 端口冲突
 - OOM 被 kill → `dmesg | grep -i oom`
 
-### 7.2 证书申请失败
+### 7.2 反代申请不到证书
 
-```bash
-docker compose logs caddy | tail -50
-```
+查反代自己的日志：
+
+| 反代 | 日志位置 |
+|------|---------|
+| Caddy（主机） | `journalctl -u caddy -f` |
+| Caddy（容器） | `docker compose logs -f caddy` |
+| Nginx + Certbot | `sudo certbot renew --dry-run` 和 `journalctl -u nginx` |
+| Cloudflare Tunnel | `cloudflared tunnel info nage` |
 
 常见原因：
+
 - DNS 没解析到 VPS（`dig nage.example.com` 验证）
 - 80 端口没开（云厂商安全组 + 系统防火墙）
 - 域名刚注册不到 1 分钟（再等等）
-- 用了国内 DNS 但 ACME 走了国际线路被墙（接 Cloudflare 中转）
+- 用了国内 DNS 但 ACME 走了国际线路被墙（接 Cloudflare 中转，或直接用 Cloudflare Tunnel）
 
 ### 7.3 DB 锁错误 `SQLITE_BUSY`
 
@@ -381,12 +417,13 @@ docker compose up -d --force-recreate
 
 部署完确认以下都做了：
 
+- [ ] HTTPS 通了（浏览器地址栏锁 + 证书有效）
 - [ ] 管理员密码已改（`用户菜单 → 修改密码`）
 - [ ] `JWT_SECRET` 至少 32 字节随机
 - [ ] `.env` 权限是 `chmod 600`：`chmod 600 /opt/nage/.env`
 - [ ] 定时备份已配（`crontab -l` 能看到）
 - [ ] 备份异地拷贝（`rsync` 到 OSS / 另一台机器）
-- [ ] 防火墙只开 22 / 80 / 443（其他口都关）
+- [ ] 防火墙只开 22 / 80 / 443（其他口都关；用 Cloudflare Tunnel 则 80/443 也可关）
 - [ ] SSH 改密钥登录 + 禁密码（`/etc/ssh/sshd_config`）
 - [ ] 失败 5 次锁 10 分钟默认开启（已内置，不用动）
 

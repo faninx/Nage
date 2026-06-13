@@ -1,0 +1,35 @@
+# 纳格（Nage）Cloudflare Tunnel 示例
+#
+# 特点：不需要主机开放 80/443 端口，cloudflared 主动连到 Cloudflare 边缘
+# 适合：国内服务器（免备案思路不保证合规）、NAT 后主机、临时公开演示
+#
+# 用法：
+#   1. 装 cloudflared：https://pkg.cloudflare.com/  或  `apt install cloudflared`
+#   2. 注册 Tunnel：
+#        cloudflared tunnel login
+#        cloudflared tunnel create nage
+#      → 记下 Tunnel ID 和 credentials-file 路径
+#   3. DNS 解析到 Tunnel：
+#        cloudflared tunnel route dns nage nage.example.com
+#   4. 把这个文件存为 ~/.cloudflared/config.yml，把下面两个 <...> 替换成你的值
+#   5. 起服务：
+#        sudo cloudflared service install
+#        sudo systemctl enable --now cloudflared
+#   6. Cloudflare 侧：DNS → nage.example.com → 已自动 CNAME 到 <tunnel-id>.cfargotunnel.com
+#      SSL/TLS → Flexible 改 Full（因为上游是 HTTP）
+#
+# 假设 docker-compose 已 up，应用监听在主机 127.0.0.1:3000
+# （如果改了 docker-compose 的 APP_PORT，下面 service 也要对应改）
+
+tunnel: <your-tunnel-id>
+credentials-file: /home/<your-user>/.cloudflared/<your-tunnel-id>.json
+
+ingress:
+  - hostname: nage.example.com
+    service: http://127.0.0.1:3000
+    # 可选健康检查
+    # originRequest:
+    #   connectTimeout: 5s
+    #   noHappyEyeballs: true
+  # 兜底规则必须存在
+  - service: http_status:404

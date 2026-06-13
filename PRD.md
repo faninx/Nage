@@ -37,7 +37,7 @@
 2. **快速查找**：输入"充电线" → 出现所有相关物品 + 位置 + 数量
 3. **位置盘点**：进入"主卧衣柜"，看到里面所有物品列表
 4. **二维码定位**：在收纳盒外贴一个二维码，手机扫码 → 直接看到盒内物品
-5. **借出登记**（v2）：把工具借给同事，系统记录归还日期，到期提醒
+5. **借出登记**（v1.1）：把工具借给同事，系统记录归还日期，到期提醒
 
 ---
 
@@ -172,7 +172,7 @@ borrow_records (id, item_id, borrower, borrowed_at, expected_return_at, returned
 | 状态 | React Server Components 为主，**zustand** 仅用于少量客户端状态 | 尽量少客户端 JS |
 | 图片 | 本地 `public/uploads/`，**sharp** 压缩 | 服务端处理 |
 | 二维码 | **`qrcode`**（生成 PNG） + **`jsqr`**（移动端扫码） | |
-| 部署 | **Docker**（推荐） / 裸机 `pnpm start` | Nginx/Caddy 反代，HTTPS 走 Caddy 自动证书 |
+| 部署 | **Docker**（推荐） / 裸机 `pnpm start` | 自带反代（Nginx/Caddy/Traefik/Cloudflare Tunnel 任选）；HTTPS 自己管 |
 
 ---
 
@@ -183,7 +183,7 @@ borrow_records (id, item_id, borrower, borrowed_at, expected_return_at, returned
 - **少层级**：核心操作不超过 3 次点击
 - **拍照即用**：移动端"新增物品"按钮直接调起相机
 - **空白友好**：首次进入有引导示例数据
-- **支持黑暗模式**：v1.1 加上
+- **支持黑暗模式**：v1.0 已完成（next-themes，浅/暗/跟随系统三档）
 
 ---
 
@@ -232,7 +232,7 @@ borrow_records (id, item_id, borrower, borrowed_at, expected_return_at, returned
 | 安全 | 密码 bcrypt（cost=12）；登录失败 5 次锁 10 分钟；JWT 有效期 7 天，httpOnly cookie；HTTPS 必须（公网部署） |
 | 浏览器 | Chrome / Safari / Edge 近 2 年版本 |
 | 屏幕 | 320px（iPhone SE）~ 2560px 宽屏均可使用 |
-| 公网部署 | 必须 HTTPS；建议域名 + Caddy 自动证书；CSRF 由 Server Actions 内建保护 |
+| 公网部署 | 必须 HTTPS；自选反代方案（推荐 Caddy 自动证书 或 Cloudflare Tunnel）；CSRF 由 Server Actions 内建保护 |
 
 ---
 
@@ -246,7 +246,7 @@ borrow_records (id, item_id, borrower, borrowed_at, expected_return_at, returned
 | **M3** | 前端响应式 UI（PC + 移动）+ 仪表盘 + 鉴权页面 |
 | **M4** | 二维码生成 + 移动端扫码查看 + 导入/导出（JSON） |
 | **M5** | Docker 化 + 部署文档 + 备份脚本 |
-| **M6+** | v1.1：借出归还 / 保质期 / 暗黑模式 / PWA |
+| **M6+** | v1.1：借出归还 / 保质期增强 / PWA（暗黑模式已在 v1.0 完成） |
 
 ---
 

@@ -1,8 +1,8 @@
 # 纳格（Nage）单机部署
-# - app:  Next.js 16 应用（端口 3000，仅内网）
-# - caddy: 反向代理 + 自动 HTTPS（80/443 对外）
+# Nage 只听 :3000，反代由你自己解决（Caddy / Nginx / Cloudflare Tunnel 任选）
+# 参考配置见 docs/examples/
 #
-# 启动：docker compose up -d
+# 启动：docker compose up -d --build
 # 升级：docker compose pull && docker compose up -d（自建镜像则 docker compose build）
 # 备份：bash scripts/backup.sh  或  crontab 调 scripts/backup.sh
 
@@ -14,8 +14,11 @@ services:
     image: nage:latest
     container_name: nage-app
     restart: unless-stopped
-    expose:
-      - "3000"
+    # 主机端口用 APP_PORT 环境变量配，默认 3000
+    # 想换成 8080：.env 里加 APP_PORT=8080，然后 docker compose up -d
+    # 反代对应指向 127.0.0.1:${APP_PORT:-3000}
+    ports:
+      - "${APP_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
@@ -44,34 +47,10 @@ services:
     # 备份时需要执行 sqlite3 .backup，必须能进容器
     # 常规运维：docker exec -it nage-app bash
 
-  caddy:
-    image: caddy:2-alpine
-    container_name: nage-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      # Caddy 申请证书时给 Let's Encrypt 的邮箱
-      ACME_EMAIL: ${ACME_EMAIL:?请在 .env 里设置 ACME_EMAIL}
-    volumes:
-      # Caddyfile 挂进去
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Caddy 的证书 + 站点配置（持久化，否则每次重启都要重申请）
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      app:
-        condition: service_healthy
-    networks:
-      - nage-net
-
 volumes:
   nage-data:
   nage-uploads:
   nage-backups:
-  caddy-data:
-  caddy-config:
 
 networks:
   nage-net:
