@@ -13,6 +13,7 @@
 - **新增反代示例**：[`docs/examples/`](./docs/examples/) 下加 Caddy / Nginx / Cloudflare Tunnel 三个方案,每个带 README + 配置文件
 - **端口可配置**:`APP_PORT` 贯通 compose 主机端口、容器端口、容器内 `PORT` 环境变量,默认 3000
 - **移动端底部 Tab 增加"标签"**:从 4 个变 5 个(首页 / 物品 / 位置 / 分类 / 标签),admin 仍只多侧栏里的"成员"和"数据"
+- **Docker build 切 USTC 镜像源**:国内网络访问 `deb.debian.org` 慢/不可达,`apt-get update` 会卡。新增 `ARG APT_MIRROR=mirrors.ustc.edu.cn`,在 deps + runtime 两个 stage 自动替换默认源。覆盖:`docker build --build-arg APT_MIRROR=deb.debian.org .`(国外环境回退)。实测 `apt-get update` 速度从 27 KiB/s → 5.9 MB/s(约 200 倍)
 - **`ACME_EMAIL` 废弃**:`.env.local.example` 加注释说明,不影响已部署实例(它们要么不再升级,要么用自己加的 `ACME_EMAIL` 跑反代)
 - **DEPLOY.md 大改**:架构图 / 防火墙 / 启动流程 / 故障排查全部去掉 Caddy 假设,加新章节"架反代"
 - **README / PRD 同步**:header 描述、特性列表、技术栈、里程碑更新

@@ -11,6 +11,7 @@
   - [Cloudflare Tunnel](./docs/examples/cloudflare-tunnel/) — 不需要主机开 80/443
 - **端口可配置**：新 `APP_PORT` 环境变量贯通 compose 端口映射 + 应用监听,默认 3000
 - **移动端底部 Tab**：从 4 个变 5 个(首页 / 物品 / 位置 / 分类 / 标签)
+- **Docker build 切 USTC 镜像源**:`apt-get update` 速度 27 KiB/s → 5.9 MB/s。默认 `ARG APT_MIRROR=mirrors.ustc.edu.cn`,国外回退用 `--build-arg APT_MIRROR=deb.debian.org`
 - **修 v1.0.0 文档坑**：`.env.local.example` 之前缺 `ACME_EMAIL`，按模板部署会 fail，现在统一清理掉
 
 ## 📦 部署（已用 v1.0.0 的用户）

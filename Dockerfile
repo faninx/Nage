@@ -9,6 +9,15 @@ RUN corepack enable && corepack prepare pnpm@11 --activate
 
 WORKDIR /app
 
+# 切到 USTC 镜像源（国内网络访问 deb.debian.org 慢/不可达）
+# 覆盖：docker build --build-arg APT_MIRROR=deb.debian.org .
+ARG APT_MIRROR=mirrors.ustc.edu.cn
+RUN for f in /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list; do \
+      if [ -f "$f" ]; then \
+        sed -i "s|deb\.debian\.org|${APT_MIRROR}|g; s|security\.debian\.org|${APT_MIRROR}|g" "$f"; \
+      fi; \
+    done
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
@@ -46,6 +55,14 @@ RUN pnpm prune --prod
 
 # ─── Stage 3: 运行时（最小化） ─────────────────────────────────
 FROM node:24-bookworm-slim AS runtime
+
+# 切到 USTC 镜像源（同 deps 阶段）
+ARG APT_MIRROR=mirrors.ustc.edu.cn
+RUN for f in /etc/apt/sources.list.d/debian.sources /etc/apt/sources.list; do \
+      if [ -f "$f" ]; then \
+        sed -i "s|deb\.debian\.org|${APT_MIRROR}|g; s|security\.debian\.org|${APT_MIRROR}|g" "$f"; \
+      fi; \
+    done
 
 # sqlite3 CLI 给 backup.sh 用；curl 给 HEALTHCHECK 用；tini 给 PID 1 用
 RUN apt-get update && apt-get install -y --no-install-recommends \
