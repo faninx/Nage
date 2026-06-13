@@ -90,7 +90,9 @@ export function ImageField({
     const next = [...pending, ...allowed]
     setPending(next)
     syncInputFiles(next)
-    e.target.value = ""
+    // 不要 e.target.value = ""：syncInputFiles 已经把 next 写进 input.files，
+    // 再清空会把刚选的文件抹掉，提交时 formData.getAll("images") 拿到空数组，
+    // uploadItemImages 会静默 return 0，用户看不到任何报错但图片没上传
   }
 
   function removePending(idx: number) {
