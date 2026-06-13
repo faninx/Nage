@@ -12,6 +12,7 @@
 - **端口可配置**：新 `APP_PORT` 环境变量贯通 compose 端口映射 + 应用监听,默认 3000
 - **移动端底部 Tab**：从 4 个变 5 个(首页 / 物品 / 位置 / 分类 / 标签)
 - **Docker build 切 USTC 镜像源**:`apt-get update` 速度 27 KiB/s → 5.9 MB/s。默认 `ARG APT_MIRROR=mirrors.ustc.edu.cn`,国外回退用 `--build-arg APT_MIRROR=deb.debian.org`
+- **QR 二维码用 PUBLIC_URL**:反代后扫码直达,不再指向 `localhost`。`.env` 加 `PUBLIC_URL=https://你的域名` 即可(兼容端口和尾部斜杠)
 - **修 v1.0.0 文档坑**：`.env.local.example` 之前缺 `ACME_EMAIL`，按模板部署会 fail，现在统一清理掉
 
 ## 📦 部署（已用 v1.0.0 的用户）

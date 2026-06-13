@@ -45,7 +45,10 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "不存在或无权访问" }, { status: 404 })
   }
 
-  const origin = req.nextUrl.origin
+  // 反代后 QR 里的 origin 用 PUBLIC_URL（去掉尾部 /），未设则降级到 request origin
+  // 兼容形式：https://x.com / https://x.com/ / https://x.com:8443 / https://x.com:8443/
+  const publicUrl = process.env.PUBLIC_URL?.replace(/\/+$/, "")
+  const origin = publicUrl || req.nextUrl.origin
   const target = `${origin}/scan?type=${type}&id=${id}`
   const png = await QRCode.toBuffer(target, {
     type: "png",

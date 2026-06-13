@@ -50,4 +50,25 @@ export async function register() {
       "🔑 JWT_SECRET 已自动生成并写入 .env.local（重启后保持一致）"
     )
   }
+
+  // 校验 PUBLIC_URL（公网通过反代访问时必须设，否则 QR 码指向 localhost）
+  const publicUrl = process.env.PUBLIC_URL
+  if (publicUrl) {
+    try {
+      const u = new URL(publicUrl)
+      if (u.protocol !== "http:" && u.protocol !== "https:") {
+        console.warn(
+          `⚠️  PUBLIC_URL 协议异常: ${publicUrl}（建议 http:// 或 https://）`
+        )
+      }
+    } catch {
+      console.warn(
+        `⚠️  PUBLIC_URL 格式无效: ${publicUrl}（应该是 https://your-domain.com 这样的完整 URL）`
+      )
+    }
+  } else {
+    console.warn(
+      "⚠️  PUBLIC_URL 未设置 — QR 二维码会指向 localhost,生产环境(反代后)请在 .env 配 PUBLIC_URL=https://你的域名"
+    )
+  }
 }

@@ -137,7 +137,17 @@ ADMIN_PASSWORD=<一个强密码，至少 12 位>
 JWT_SECRET=<上一步 openssl 输出的整串>
 ```
 
+**反代后还必须加一行**（给二维码用）：
+
+```env
+PUBLIC_URL=https://nage.example.com
+```
+
+不带路径、不带尾部斜杠；非默认端口就加 `:8443`。`https://nage.example.com` 和 `https://nage.example.com/` 都能识别。
+
 > `ADMIN_PASSWORD` 是第一次启动时自动建管理员用的。**首次启动后改密码**就去 Web 界面 "成员" 页面改管理员密码，或者删库重启用新密码。
+>
+> `PUBLIC_URL` 不填的话启动时会打警告,二维码会指向 `localhost`（扫码全废）。内网裸跑不设也行。
 >
 > v1.0.1 起不再需要 `ACME_EMAIL`（Caddy 已不集成，反代自己管证书）。
 
