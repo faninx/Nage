@@ -81,7 +81,7 @@ export default async function AppLayout({
 
       {/* 底部 Tab（移动） */}
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 border-t bg-background">
-        <NavLinks items={navItems.slice(0, 4)} mobile />
+        <NavLinks items={navItems.slice(0, 5)} mobile />
       </nav>
 
       {/* 全局悬浮 + 按钮（避开 Dialog z-50 用 z-30） */}
