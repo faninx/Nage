@@ -1,5 +1,5 @@
 # 纳格（Nage）单机部署
-# Nage 只听 :3000，反代由你自己解决（Caddy / Nginx / Cloudflare Tunnel 任选）
+# Nage 只听 :${APP_PORT:-3000}，反代由你自己解决（Caddy / Nginx / Cloudflare Tunnel 任选）
 # 参考配置见 docs/examples/
 #
 # 启动：docker compose up -d --build
@@ -14,14 +14,14 @@ services:
     image: nage:latest
     container_name: nage-app
     restart: unless-stopped
-    # 主机端口用 APP_PORT 环境变量配，默认 3000
-    # 想换成 8080：.env 里加 APP_PORT=8080，然后 docker compose up -d
+    # APP_PORT 贯通：.env 里改这一个，compose 主机端口 + 容器端口 + 应用监听端口都跟着变
+    # 想换成 8080：.env 加 APP_PORT=8080，然后 docker compose up -d
     # 反代对应指向 127.0.0.1:${APP_PORT:-3000}
     ports:
-      - "${APP_PORT:-3000}:3000"
+      - "${APP_PORT:-3000}:${APP_PORT:-3000}"
     environment:
       NODE_ENV: production
-      PORT: 3000
+      PORT: ${APP_PORT:-3000}
       HOSTNAME: 0.0.0.0
       ADMIN_USERNAME: ${ADMIN_USERNAME:?请在 .env 里设置 ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?请在 .env 里设置 ADMIN_PASSWORD}
@@ -37,7 +37,7 @@ services:
       # 备份目录（容器内落地，外部访问通过 docker cp 或 volume 挂到主机）
       - nage-backups:/app/backups
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:3000/login"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:${APP_PORT:-3000}/login"]
       interval: 30s
       timeout: 5s
       start_period: 20s

@@ -11,7 +11,7 @@
 
 - **移除 Caddy 集成**：v1.0.0 把 Caddy 写进 `docker-compose.yml` + 项目根 `Caddyfile`。v1.0.1 起反代由用户自己解决,`docker-compose.yml` 只剩 `app` 一个 service。`Caddyfile` 移到 [`docs/examples/caddy/`](./docs/examples/caddy/) 当参考
 - **新增反代示例**：[`docs/examples/`](./docs/examples/) 下加 Caddy / Nginx / Cloudflare Tunnel 三个方案,每个带 README + 配置文件
-- **端口可配置**:`docker-compose.yml` 的主机端口用 `APP_PORT` 环境变量,默认 3000
+- **端口可配置**:`APP_PORT` 贯通 compose 主机端口、容器端口、容器内 `PORT` 环境变量,默认 3000
 - **`ACME_EMAIL` 废弃**:`.env.local.example` 加注释说明,不影响已部署实例(它们要么不再升级,要么用自己加的 `ACME_EMAIL` 跑反代)
 - **DEPLOY.md 大改**:架构图 / 防火墙 / 启动流程 / 故障排查全部去掉 Caddy 假设,加新章节"架反代"
 - **README / PRD 同步**:header 描述、特性列表、技术栈、里程碑更新

@@ -9,7 +9,7 @@
   - [Caddy](./docs/examples/caddy/) — 配置最少，自动 HTTPS
   - [Nginx](./docs/examples/nginx/) — 用的人最多，文档全
   - [Cloudflare Tunnel](./docs/examples/cloudflare-tunnel/) — 不需要主机开 80/443
-- **端口可配置**：新 `APP_PORT` 环境变量，默认 3000
+- **端口可配置**：新 `APP_PORT` 环境变量贯通 compose 端口映射 + 应用监听,默认 3000
 - **修 v1.0.0 文档坑**：`.env.local.example` 之前缺 `ACME_EMAIL`，按模板部署会 fail，现在统一清理掉
 
 ## 📦 部署（已用 v1.0.0 的用户）
