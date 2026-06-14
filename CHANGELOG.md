@@ -5,6 +5,14 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.2] - 2026-06-14
+
+### 新增
+
+- **编辑物品支持调整图片顺序**：在 `ImageField` 每张已上传图上加 `↑`/`↓` 按钮（边界 disabled、悬停 / 聚焦显现），首张图标记「封面」角标。提交时 `imageOrder` 字段把新顺序发给服务端，服务端校验 permutation 后逐条 `UPDATE sortOrder`。`queryItems` / `queryItemById` 一直按 `sortOrder ASC` 取首张作封面，所以列表 / 详情 / 详情页轮播图首张自动跟着走，无需额外改动
+  - 新上传的图仍走 `max(sortOrder)+1` 追加到末尾，跟重排互不干扰
+  - `existing.length === 1` 时不显示箭头按钮（单图无意义）
+
 ## [1.0.1] - 2026-06-14
 
 ### 变更

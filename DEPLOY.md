@@ -290,7 +290,7 @@ docker compose up -d
 
 ```yaml
 app:
-  image: ghcr.io/faninx/nage:1.0.1   # 改成你想用的版本
+  image: ghcr.io/faninx/nage:1.0.2   # 改成你想用的版本
   # 删掉 build: 段
 ```
 
