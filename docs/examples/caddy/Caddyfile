@@ -38,6 +38,9 @@ nage.example.com {
     # 自动 HTTPS（首次启动需要外网可达 80 端口做 ACME 校验）
     encode zstd gzip
 
+    # Caddy v2 reverse_proxy 默认不限制 body size,直接把请求转给上游。
+    # 真正的 body 限制在 next.config.ts 的 serverActions.bodySizeLimit(默认 20mb)。
+    #
     # 反向代理到 Nage 应用
     # 主机装 Caddy：127.0.0.1:3000（compose 已 ports 绑定到主机 3000）
     # 容器装 Caddy：nage-app:3000（需 networks: nage-net）

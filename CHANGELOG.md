@@ -5,6 +5,30 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.3] - 2026-06-14
+
+### 修复
+
+- **上传图片 HTTP 413 "Body exceeded 1 MB limit"**：Next.js 16 Server Action 默认请求体上限是 1MB，手机原图单张就超。`next.config.ts` 加 `experimental.serverActions.bodySizeLimit: "20mb"`，对齐反代示例的 `client_max_body_size 20M`。应用层 `MAX_IMAGE_BYTES`（单张 10MB）和 `MAX_IMAGES_PER_ITEM`（单物品 9 张）仍会先兜底校验，所以放宽的是「一次提交最多能传多大的合计体积」
+
+### 文档
+
+- `docs/examples/nginx/nage.conf` / `docs/examples/caddy/Caddyfile` / `docs/examples/cloudflare-tunnel/config.yml` 各加一条注释，明确 body 限制在哪一层、谁兜底
+- `DEPLOY.md` 故障排查加 §7.6「上传图片报 413」，并列出三种反代的默认 body 上限对比
+
+### 升级指引
+
+镜像用户拉新 tag，源码用户拉代码 `rebuild` 一次：
+
+```bash
+cd /opt/nage
+git pull
+docker compose build app
+docker compose up -d
+```
+
+如果是 ghcr.io 镜像用户，编辑 `docker-compose.yml` 把 image 改成 `:1.0.3`，然后 `docker compose pull && docker compose up -d`。
+
 ## [1.0.2] - 2026-06-14
 
 ### 新增

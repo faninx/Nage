@@ -27,6 +27,8 @@ credentials-file: /home/<your-user>/.cloudflared/<your-tunnel-id>.json
 ingress:
   - hostname: nage.example.com
     service: http://127.0.0.1:3000
+    # Cloudflare 免费版单文件 100MB 上限,Nage 默认单张 10MB + 一次最多 9 张够用
+    # (实际由 next.config.ts 的 serverActions.bodySizeLimit 兜底,默认 20mb)
     # 可选健康检查
     # originRequest:
     #   connectTimeout: 5s

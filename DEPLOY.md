@@ -290,7 +290,7 @@ docker compose up -d
 
 ```yaml
 app:
-  image: ghcr.io/faninx/nage:1.0.2   # 改成你想用的版本
+  image: ghcr.io/faninx/nage:1.0.3   # 改成你想用的版本
   # 删掉 build: 段
 ```
 
@@ -420,6 +420,32 @@ docker compose restart app   # 仅重启 app
 # 或者
 docker compose up -d --force-recreate
 ```
+
+### 7.6 上传图片报 "Body exceeded 1 MB limit" / 413
+
+`app` 容器日志看到 `Error: Body exceeded 1 MB limit`，浏览器这边就是 413 Payload Too Large。
+
+**根因**：Next.js 16 的 Server Action 默认请求体上限是 1MB，**单张手机原图就超了**。Nage 在 v1.0.3 起把 `next.config.ts` 里的 `experimental.serverActions.bodySizeLimit` 调到了 `20mb`（对齐反代的 `client_max_body_size 20M`），所以拉新镜像就不会再撞。
+
+如果用的是 v1.0.2 及更早的镜像，又不想升级（升级后还要 `rebuild` 一次镜像，嫌麻烦），可以临时绕过：
+
+```bash
+# 1. 改 next.config.ts：experimental.serverActions.bodySizeLimit: "20mb"
+# 2. 重新 build
+cd /opt/nage
+docker compose build app
+docker compose up -d
+```
+
+如果想继续传更大的图（批量、4K 摄影之类），把 `next.config.ts` 的 `20mb` 和反代示例的 `client_max_body_size 20M` / 各自 `body_size` 限制都对应调大。**应用层 `MAX_IMAGE_BYTES`（单张 10MB）和 `MAX_IMAGES_PER_ITEM`（单物品 9 张）仍会先兜底校验**——放大上传上限主要是为了多张图的合计体积。
+
+常见反代默认上限（够用就是没动它）：
+
+| 反代 | 默认 body 上限 | 配置项 | 备注 |
+|------|---------------|--------|------|
+| Nginx | `1m` | `client_max_body_size` | **必须**显式改成 `20M` 以上 |
+| Caddy v2 | 无限制 | —— | 直接交给上游 Next.js |
+| Cloudflare Tunnel | 免费版 100MB / 单文件 | —— | 默认就够 9 张图 |
 
 ---
 
