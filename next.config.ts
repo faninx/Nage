@@ -10,6 +10,19 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "20mb",
     },
   },
+  // 把 /uploads/* 重写到 /api/uploads/[...path],由 Route Handler 每次读盘服务。
+  // 原因:Next.js 16 (Turbopack) production server 启动时一次性扫 public/ 建文件
+  // 清单,启动后新加的文件不服务 —— 表现就是用户上传图片保存后 404。
+  // rewrite 优先级在 public/ 之前,所以能绕开这个 bug。
+  // 详见 src/app/api/uploads/[...path]/route.ts 顶部的注释。
+  async rewrites() {
+    return [
+      {
+        source: "/uploads/:path*",
+        destination: "/api/uploads/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

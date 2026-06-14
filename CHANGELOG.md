@@ -29,6 +29,27 @@ docker compose up -d
 
 如果是 ghcr.io 镜像用户，编辑 `docker-compose.yml` 把 image 改成 `:1.0.3`，然后 `docker compose pull && docker compose up -d`。
 
+## [1.0.4] - 2026-06-14
+
+### 修复
+
+- **上传图片保存后 404 (图片显示不出来)**：Next.js 16 (Turbopack) production server 启动时**一次性**扫 `public/` 建文件清单，启动后新加的文件不服务。表现就是用户上传图片保存后图片 404。`next.config.ts` 加 rewrite `/uploads/:path*` → `/api/uploads/:path*` 把所有 `/uploads/*` 请求转给新增的 `src/app/api/uploads/[...path]/route.ts`，每次请求都去磁盘读最新文件，绕开启动扫描。带 ETag / Last-Modified，文件被覆盖浏览器能拿到新版（304 Not Modified 走正确路径）
+
+### 文档
+
+- `DEPLOY.md` 故障排查 §7.6 加一条"上传图片 404 / 旧图缓存"指引（指向升级 v1.0.4）
+
+### 升级指引
+
+```bash
+cd /opt/nage
+git pull
+docker compose build app
+docker compose up -d
+```
+
+不需要任何数据迁移 —— 文件位置、DB 路径、volume 挂载都不动，纯粹路由层变化。
+
 ## [1.0.2] - 2026-06-14
 
 ### 新增

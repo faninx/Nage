@@ -290,7 +290,7 @@ docker compose up -d
 
 ```yaml
 app:
-  image: ghcr.io/faninx/nage:1.0.3   # 改成你想用的版本
+  image: ghcr.io/faninx/nage:1.0.4   # 改成你想用的版本
   # 删掉 build: 段
 ```
 
@@ -446,6 +446,26 @@ docker compose up -d
 | Nginx | `1m` | `client_max_body_size` | **必须**显式改成 `20M` 以上 |
 | Caddy v2 | 无限制 | —— | 直接交给上游 Next.js |
 | Cloudflare Tunnel | 免费版 100MB / 单文件 | —— | 默认就够 9 张图 |
+
+### 7.7 上传图片保存后 404 / 一直是旧图
+
+物品详情 / 列表里图片是破的，浏览器 DevTools 看到 `/uploads/items/<id>/<idx>.jpg` 返回 404，但 `docker exec nage-app ls /app/public/uploads/items/<id>/` 明明能看见文件。
+
+**根因**：Next.js 16 (Turbopack) production server 启动时**一次性**扫 `public/` 建文件清单，**启动后新加的文件不被服务**。这是 Next.js 16 + Turbopack 的已知行为（dev 模式没问题，prod 才暴露）。E2E 脚本不走这条路径所以一直没测出来。
+
+**修法**：v1.0.4 起加了 `/uploads/:path*` → `/api/uploads/:path*` 的 rewrite + 一个 catch-all Route Handler，每次请求都去磁盘读，绕开启动扫描。
+
+```bash
+cd /opt/nage
+git pull
+docker compose build app
+docker compose up -d
+# 不用动 volume,不用动 DB
+```
+
+不升级的话**没有干净绕过**——只要 prod server 还在跑，新上传的文件就 404。改 `next.config.ts` 加 rewrite 同样要 rebuild，等于升级。直接拉 v1.0.4 镜像最省事。
+
+类似症状（修改后图片缓存不刷新）：v1.0.4 的 route handler 用 ETag（size + mtime 哈希），文件被覆盖浏览器会拿到新版（304 走正确路径）。如果你看到旧的图，清一下浏览器缓存或硬刷新（Ctrl+Shift+R）。
 
 ---
 
