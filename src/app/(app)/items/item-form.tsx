@@ -20,7 +20,7 @@ import { TagsMultiSelect, type TagOpt } from "@/components/tags-multi-select"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { deleteItemImageAction } from "@/lib/actions/images"
 import { MAX_IMAGES_PER_ITEM } from "@/lib/actions/types"
-import { ImagePlus, X } from "lucide-react"
+import { ImagePlus, X, ArrowUp, ArrowDown } from "lucide-react"
 import { toast } from "sonner"
 
 export type ItemFormItem = {
@@ -101,6 +101,17 @@ export function ImageField({
     syncInputFiles(next)
   }
 
+  // 重排 existing 里的图片；idx 越界不动
+  function moveImage(idx: number, delta: -1 | 1) {
+    setExisting((arr) => {
+      const j = idx + delta
+      if (j < 0 || j >= arr.length) return arr
+      const next = [...arr]
+      ;[next[idx], next[j]] = [next[j], next[idx]]
+      return next
+    })
+  }
+
   async function handleDeleteExisting(id: number) {
     if (
       !(await confirm({
@@ -127,7 +138,7 @@ export function ImageField({
     <div className="space-y-1.5">
       <Label>图片（{existing.length + pending.length}/{MAX_IMAGES_PER_ITEM}）</Label>
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-        {existing.map((img) => (
+        {existing.map((img, i) => (
           <div
             key={img.id}
             className="relative aspect-square rounded-md overflow-hidden border bg-muted group"
@@ -140,6 +151,33 @@ export function ImageField({
               className="object-cover"
               unoptimized
             />
+            {i === 0 && (
+              <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-primary text-primary-foreground text-[10px] font-medium leading-none">
+                封面
+              </span>
+            )}
+            {existing.length > 1 && (
+              <div className="absolute bottom-1 inset-x-1 flex justify-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                <button
+                  type="button"
+                  onClick={() => moveImage(i, -1)}
+                  disabled={i === 0 || disabled}
+                  className="size-6 rounded bg-black/60 text-white flex items-center justify-center disabled:opacity-30"
+                  aria-label="上移"
+                >
+                  <ArrowUp className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => moveImage(i, 1)}
+                  disabled={i === existing.length - 1 || disabled}
+                  className="size-6 rounded bg-black/60 text-white flex items-center justify-center disabled:opacity-30"
+                  aria-label="下移"
+                >
+                  <ArrowDown className="size-3.5" />
+                </button>
+              </div>
+            )}
             <button
               type="button"
               onClick={() => handleDeleteExisting(img.id)}
@@ -195,6 +233,14 @@ export function ImageField({
         className="hidden"
         disabled={disabled}
       />
+      {existing.length > 0 && (
+        // 服务端用这个字段重排 sortOrder；新上传的 pending 不参与,走 max+1 追加末尾
+        <input
+          type="hidden"
+          name="imageOrder"
+          value={existing.map((im) => im.id).join(",")}
+        />
+      )}
       <p className="text-xs text-muted-foreground">
         单张 ≤10MB，自动压缩到1080p JPEG（质量80）
       </p>

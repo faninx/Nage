@@ -5,7 +5,7 @@ import { rm } from "node:fs/promises"
 import path from "node:path"
 import { eq, and, inArray } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { items, spaces, categories, locations, itemTags, tags } from "@/lib/db/schema"
+import { items, spaces, categories, locations, itemTags, tags, itemImages } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
 import {
   CreateItemSchema,
@@ -84,6 +84,39 @@ async function syncItemTags(itemId: number, desiredTagIds: number[], spaceId: nu
     if (err) throw new Error(err)
     await db.insert(itemTags).values(toAdd.map((tagId) => ({ itemId, tagId })))
   }
+}
+
+/**
+ * 按 desiredOrderIds 重排指定 item 已有的图片 sortOrder。
+ * - 空数组 → 不动（保持向后兼容 / 客户端没传字段时）
+ * - 长度不等 / 含不属于该 item 的 id / 重复 → 拒绝（return error）
+ * - 通过后逐条 UPDATE sortOrder = 数组下标
+ *
+ * 必须在 uploadItemImages 之前调：先固化现有图顺序，新上传的图走 max+1 追加末尾。
+ */
+async function syncItemImageOrder(
+  itemId: number,
+  desiredOrderIds: number[]
+): Promise<string | null> {
+  if (desiredOrderIds.length === 0) return null
+  const current = await db
+    .select({ id: itemImages.id })
+    .from(itemImages)
+    .where(eq(itemImages.itemId, itemId))
+  if (current.length !== desiredOrderIds.length) {
+    return `图片数量不匹配（期望 ${desiredOrderIds.length}，实际 ${current.length}）`
+  }
+  const currentSet = new Set(current.map((r) => r.id))
+  for (const id of desiredOrderIds) {
+    if (!currentSet.has(id)) return `图片 #${id} 不属于该物品`
+  }
+  for (let i = 0; i < desiredOrderIds.length; i++) {
+    await db
+      .update(itemImages)
+      .set({ sortOrder: i })
+      .where(and(eq(itemImages.id, desiredOrderIds[i]), eq(itemImages.itemId, itemId)))
+  }
+  return null
 }
 
 export async function createItemAction(
@@ -181,11 +214,12 @@ export async function updateItemAction(
     price: formData.get("price") || "",
     tagIds: formData.get("tagIds") || "",
     expiredAt: formData.get("expiredAt") || "",
+    imageOrder: formData.get("imageOrder") || "",
   })
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "参数错误" }
   }
-  const { id, name, description, categoryId, locationId, quantity, unit, price, tagIds, expiredAt } = parsed.data
+  const { id, name, description, categoryId, locationId, quantity, unit, price, tagIds, expiredAt, imageOrder } = parsed.data
 
   const own = await userOwnsItem(user.id, id)
   if (!own) return { error: "物品不存在或无权操作" }
@@ -228,6 +262,10 @@ export async function updateItemAction(
   } catch (e) {
     return { error: e instanceof Error ? e.message : "标签关联失败" }
   }
+
+  // 先固化现有图顺序，新上传的图走 max+1 自动追加到末尾
+  const orderErr = await syncItemImageOrder(id, imageOrder)
+  if (orderErr) return { error: orderErr }
 
   try {
     await uploadItemImages(id, formData)

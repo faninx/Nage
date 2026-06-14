@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { MAX_IMAGES_PER_ITEM } from "@/lib/actions/types"
 
 const name = z.string().min(1, "名称不能为空").max(50, "名称最长 50 字")
 const color = z
@@ -202,6 +203,21 @@ const tagIdsCsv = z.preprocess(
   z.array(z.number().int().positive()).max(20, "标签过多")
 )
 
+// 编辑时图片顺序 CSV（"1,2,3" → 数组）。空 = 不重排。长度 = 当前已上传图数量是
+// 服务端 permutation 校验的硬约束，缺 / 多 / 重复都会被拒。
+const imageOrderCsv = z.preprocess(
+  (v) => {
+    if (v == null || v === "") return [] as number[]
+    return String(v)
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s !== "")
+      .map(Number)
+      .filter((n) => Number.isInteger(n) && n > 0)
+  },
+  z.array(z.number().int().positive()).max(MAX_IMAGES_PER_ITEM)
+)
+
 // 价格：formData 里的字符串（可能 ""），最多 2 位小数，>= 0，NULL 表示未设
 const optionalPrice = z.preprocess(
   nullifyEmpty,
@@ -238,6 +254,7 @@ export const UpdateItemSchema = z.object({
   price: optionalPrice,
   tagIds: tagIdsCsv.optional().default([]),
   expiredAt: z.preprocess(nullifyEmpty, z.coerce.date().nullable()).optional(),
+  imageOrder: imageOrderCsv.optional().default([]),
 })
 
 export const DeleteItemSchema = z.object({
