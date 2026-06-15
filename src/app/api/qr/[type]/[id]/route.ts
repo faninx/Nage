@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import QRCode from "qrcode"
 import { requireSession } from "@/lib/auth/session"
+import { hasSpaceAccess } from "@/lib/auth/space-access"
 import { db } from "@/lib/db"
-import { items, locations, spaces } from "@/lib/db/schema"
-import { eq, and } from "drizzle-orm"
+import { items, locations } from "@/lib/db/schema"
+import { eq } from "drizzle-orm"
 
 export const dynamic = "force-dynamic"
 
@@ -23,25 +24,26 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "参数错误" }, { status: 400 })
   }
 
-  let ok = false
+  let spaceId: number | null = null
   if (type === "item") {
     const [row] = await db
-      .select({ id: items.id })
+      .select({ spaceId: items.spaceId })
       .from(items)
-      .innerJoin(spaces, eq(items.spaceId, spaces.id))
-      .where(and(eq(items.id, id), eq(spaces.ownerId, user.id)))
+      .where(eq(items.id, id))
       .limit(1)
-    ok = !!row
+    spaceId = row?.spaceId ?? null
   } else if (type === "location") {
     const [row] = await db
-      .select({ id: locations.id })
+      .select({ spaceId: locations.spaceId })
       .from(locations)
-      .innerJoin(spaces, eq(locations.spaceId, spaces.id))
-      .where(and(eq(locations.id, id), eq(spaces.ownerId, user.id)))
+      .where(eq(locations.id, id))
       .limit(1)
-    ok = !!row
+    spaceId = row?.spaceId ?? null
   }
-  if (!ok) {
+  if (spaceId == null) {
+    return NextResponse.json({ error: "不存在或无权访问" }, { status: 404 })
+  }
+  if (!(await hasSpaceAccess(user.id, spaceId, "viewer"))) {
     return NextResponse.json({ error: "不存在或无权访问" }, { status: 404 })
   }
 

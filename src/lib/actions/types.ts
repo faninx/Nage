@@ -3,7 +3,10 @@
 
 export type ActionState = { error?: string; ok?: boolean }
 
-export const DEFAULT_SPACE_NAME = "我的家"
+/** 每个用户首次进入系统时自动建的空间名（"${昵称}的空间"） */
+export function defaultSpaceName(nickname: string): string {
+  return `${nickname}的空间`
+}
 
 export const MAX_IMAGES_PER_ITEM = 9
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024 // 10MB 原图

@@ -5,6 +5,55 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-06-15
+
+### 新增（M7 — 多用户/多空间协作）
+
+- **多空间**：每个用户可建多个空间（家 / 公司 / 实验室……），空间间数据完全隔离。首次登录自动建一个默认空间（名字 = `"{昵称}的空间"`）
+- **空间成员三档角色**：
+  - **owner**：全部权限 + 改空间名 / 删空间 / 管理成员 / 转让所有权
+  - **editor**：增删改该空间内的物品 / 位置 / 分类 / 标签
+  - **viewer**：只读
+- **空间设置页**（`/spaces/[id]/settings`，仅 owner）：成员管理（按用户名搜索、邀请、改角色、移除）+ 改空间名 + 删空间。**最后一名 owner 不可降级 / 不可移除**（强一致保护，避免空间变孤儿）
+- **空间切换器**：顶栏 Logo 右侧，点开下拉看所有可访问空间 + 当前角色 Badge + 「当前」标记 + 「空间设置 / 新建空间」快捷入口（仅 owner）
+- **新建空间页**（`/spaces/new`）：所有登录用户可用，自动成为 owner
+- **当前空间持久化**：每个 user 记一个 `users.last_space_id`，切换后记住，登录回来直接落点上次所在空间
+- **数据导入 / 导出权限放宽**：从 v1.0 仅管理员 → v1.1 该空间的 owner / editor 都可操作自己空间。viewer 仍然 403
+
+### 修复
+
+- **登录锁定的剩余时间显示 `NaN 分钟后再试`**：`login_attempts.locked_until` 列声明为 `integer mode='timestamp'`，但旧 SQL 写的是 `datetime(..., 'unixepoch')` 字符串。Drizzle 读出来拿不到有效时间，`Math.ceil(NaN/60000)` 渲染成「NaN」。SQL 改成写 `${now + LOCK_DURATION_MS / 1000}` 整数秒，启动时 `bootstrap.ts` 顺手清一遍已经写脏的行
+- **编辑物品保存图片不展示**：`ItemForm` 的 `onFileChange` 选完图后 `e.target.value = ""` 把刚写入的 `files` 数组抹掉了，提交时 `formData` 拿不到文件，server 静默 return 0 张图。`onFileChange` 不再清空 input，留给 form-level reset
+- **成员添加偶发 `A 'use server' file can only export async functions`**：之前在 `space-members.ts` 里 `export` 了几个 zod schema 对象。`"use server"` 文件只能导出 async 函数，schema 只在本文件用，`export` 去掉
+- **`/admin/data` 页面 viewer 误进入**：页面没有 owner 校验。现在进入前 `hasSpaceAccess(...,"editor")` 校验，不满足 redirect（route 还会再校验一次，防御性）
+
+### 数据库
+
+- 新表 `space_members (space_id, user_id, role, created_at)`，复合主键 + FK 级联删除 + `space_members_user_idx`（按 user 查其可访问空间）
+- 新列 `users.last_space_id`，FK → `spaces.id`，ON DELETE SET NULL
+- 迁移 `drizzle/0003_flimsy_orphan.sql`；启动时 `bootstrap.ts::backfillSpaceMembers` 幂等地给每个老空间补一行 `role='owner'` 的 member 行，同时把 `last_space_id` 指向该 user 最早拥有的空间。**幂等**：重复启动无副作用
+
+### 文档
+
+- `PRD.md` §5 数据模型补 `space_members` 表 + `users.last_space_id` 列；§10 里程碑加 M7；§12.2 权限表更新（导入/导出「自己的空间内」即可）
+- `README.md` 特性 + 里程碑同步
+- `CLAUDE.md` 状态行更新
+- 新增 `scripts/test-m7-multiuser.ts`（12 步 E2E，全过）
+
+### 升级指引
+
+```bash
+cd /opt/nage
+git pull
+git checkout v1.1.0
+docker compose build app
+docker compose up -d
+```
+
+启动时 `bootstrap` 会自动跑 `0003_flimsy_orphan` 迁移 + 老空间 backfill，**不需要任何手动 SQL**。
+
+如果是 ghcr.io 镜像用户，编辑 `docker-compose.yml` 把 image 改成 `:1.1.0`，然后 `docker compose pull && docker compose up -d`。
+
 ## [1.0.3] - 2026-06-14
 
 ### 修复

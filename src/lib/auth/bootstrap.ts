@@ -1,10 +1,9 @@
 import "server-only"
 import { db } from "@/lib/db"
-import { users } from "@/lib/db/schema"
+import { users, spaces, spaceMembers } from "@/lib/db/schema"
 import { hashPassword } from "./password"
 import { generateSecret } from "./jwt"
-import { sql } from "drizzle-orm"
-import { eq } from "drizzle-orm"
+import { sql, eq, and } from "drizzle-orm"
 import { migrate } from "drizzle-orm/better-sqlite3/migrator"
 import { randomBytes } from "node:crypto"
 import { writeFileSync, existsSync, readFileSync } from "node:fs"
@@ -61,7 +60,18 @@ export async function ensureBootstrap(): Promise<BootstrapResult> {
     }
   }
 
-  // 3. 检查/建管理员
+  // 3. M7.1 backfill：为老空间补 member(owner) 行 + 补 users.lastSpaceId
+  //    表结构升级时已经迁完；这里只补数据
+  try {
+    await backfillSpaceMembers()
+  } catch (e) {
+    console.warn(
+      "[bootstrap] space_members backfill 失败（非致命，继续启动）:",
+      e instanceof Error ? e.message : String(e)
+    )
+  }
+
+  // 4. 检查/建管理员
   const [{ count }] = await db
     .select({ count: sql<number>`count(*)` })
     .from(users)
@@ -104,6 +114,42 @@ export async function ensureBootstrap(): Promise<BootstrapResult> {
   })
 
   return result
+}
+
+/**
+ * 把已存在的 spaces 全部补一行 space_members(spaceId, ownerId, role='owner')，
+ * 如果该行已经存在（按 PK）则忽略；同时为每个 user 把 lastSpaceId 指向他最早拥有的空间。
+ *
+ * 幂等：重复调用无副作用。
+ */
+async function backfillSpaceMembers() {
+  // 1) 所有 spaces
+  const allSpaces = await db.select({ id: spaces.id, ownerId: spaces.ownerId }).from(spaces)
+  for (const s of allSpaces) {
+    // 不存在则插入（onConflictDoNothing 防止与并发启动竞态）
+    await db
+      .insert(spaceMembers)
+      .values({ spaceId: s.id, userId: s.ownerId, role: "owner" })
+      .onConflictDoNothing()
+  }
+
+  // 2) 每个 user：lastSpaceId 为空 → 指向他最早拥有的空间
+  const allUsers = await db
+    .select({ id: users.id, lastSpaceId: users.lastSpaceId })
+    .from(users)
+  for (const u of allUsers) {
+    if (u.lastSpaceId != null) continue
+    const [first] = await db
+      .select({ id: spaces.id })
+      .from(spaces)
+      .innerJoin(spaceMembers, eq(spaceMembers.spaceId, spaces.id))
+      .where(and(eq(spaceMembers.userId, u.id), eq(spaces.ownerId, u.id)))
+      .orderBy(spaces.id)
+      .limit(1)
+    if (first) {
+      await db.update(users).set({ lastSpaceId: first.id }).where(eq(users.id, u.id))
+    }
+  }
 }
 
 function writeEnvLocal(patch: Record<string, string>) {

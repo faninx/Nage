@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 英文名：**Nage**
 - 包名 / 数据库名 / 目录：`nage`（小写）
 
-**M1 阶段已完成**（鉴权 + 空间/位置/分类/标签/成员 CRUD + UI 骨架）。当前待进入 M2（物品 CRUD + 图片上传 + 搜索）。
+**v1.0 MVP 全部完成**（M1–M5：鉴权 / 空间/位置/分类/标签/成员 CRUD / 物品 CRUD / 仪表盘 / 二维码 / 导入导出 / Docker 部署）。**v1.1.0 已发**（M7 多用户/多空间协作）。下一步：v1.2 计划（F13 借出归还 / F14 保质期增强收口 / F16 PWA / F18 i18n）。
 
 修改代码前务必先读 `PRD.md`（唯一事实源），它定义了：
 - 完整功能清单（v1.0 MVP / v1.1 增强 / v2.0 远期）

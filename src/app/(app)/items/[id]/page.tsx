@@ -8,9 +8,9 @@ import {
   itemImages,
   itemTags,
   tags,
-  spaces,
 } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
+import { hasSpaceAccess } from "@/lib/auth/space-access"
 import { ItemDetailClient, type ItemDetail, type LocBreadcrumb } from "./item-detail-client"
 import type { LocNode } from "@/components/location-tree-select"
 import type { Tag as DbTag } from "@/lib/db/schema"
@@ -23,6 +23,7 @@ export default async function ItemDetailPage(props: {
   const id = Number(idStr)
   if (!Number.isInteger(id) || id <= 0) notFound()
 
+  // 校验访问：item 存在 + user 是该 space 的 member（任一角色即可读）
   const [row] = await db
     .select({
       id: items.id,
@@ -37,16 +38,23 @@ export default async function ItemDetailPage(props: {
       expiredAt: items.expiredAt,
       createdAt: items.createdAt,
       updatedAt: items.updatedAt,
-      ownerId: spaces.ownerId,
     })
     .from(items)
-    .innerJoin(spaces, eq(items.spaceId, spaces.id))
     .where(eq(items.id, id))
     .limit(1)
   if (!row) notFound()
-  if (row.ownerId !== user.id) notFound()
 
-  const [cat, loc, imgs, itemTagRows] = await Promise.all([
+  if (!(await hasSpaceAccess(user.id, row.spaceId, "viewer"))) notFound()
+
+  const [
+    cat,
+    loc,
+    imgs,
+    itemTagRows,
+    allCategories,
+    allTags,
+    allLocationRows,
+  ] = await Promise.all([
     row.categoryId
       ? db
           .select({ id: categories.id, name: categories.name, icon: categories.icon })
@@ -72,19 +80,34 @@ export default async function ItemDetailPage(props: {
       .select({ tagId: itemTags.tagId })
       .from(itemTags)
       .where(eq(itemTags.itemId, id)),
+    db
+      .select()
+      .from(categories)
+      .where(eq(categories.spaceId, row.spaceId))
+      .orderBy(categories.sortOrder, categories.id),
+    db
+      .select()
+      .from(tags)
+      .where(eq(tags.spaceId, row.spaceId))
+      .orderBy(tags.id),
+    db
+      .select()
+      .from(locations)
+      .where(eq(locations.spaceId, row.spaceId))
+      .orderBy(locations.sortOrder, locations.id),
   ])
+
+  const allLocations: LocNode[] = allLocationRows.map((l) => ({
+    id: l.id,
+    name: l.name,
+    parentId: l.parentId,
+    sortOrder: l.sortOrder,
+  }))
 
   // 位置面包屑（从根到自己）
   const breadcrumb: LocBreadcrumb[] = []
   if (loc) {
-    const all: LocNode[] = (
-      await db
-        .select()
-        .from(locations)
-        .where(eq(locations.spaceId, row.spaceId))
-        .orderBy(locations.sortOrder, locations.id)
-    ).map((l) => ({ id: l.id, name: l.name, parentId: l.parentId, sortOrder: l.sortOrder }))
-    const byId = new Map(all.map((l) => [l.id, l]))
+    const byId = new Map(allLocations.map((l) => [l.id, l]))
     let cur: LocNode | undefined = byId.get(loc.id)
     const path: LocNode[] = []
     let guard = 0
@@ -106,31 +129,6 @@ export default async function ItemDetailPage(props: {
       .sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
       .map((t) => ({ id: t.id, name: t.name, color: t.color }))
   }
-
-  // 编辑表单需要的选项：所有分类 / 位置 / 标签（保证 form 能用上当前空间所有可选项）
-  const [allCategories, allTags, allLocationRows] = await Promise.all([
-    db
-      .select()
-      .from(categories)
-      .where(eq(categories.spaceId, row.spaceId))
-      .orderBy(categories.sortOrder, categories.id),
-    db
-      .select()
-      .from(tags)
-      .where(eq(tags.spaceId, row.spaceId))
-      .orderBy(tags.id),
-    db
-      .select()
-      .from(locations)
-      .where(eq(locations.spaceId, row.spaceId))
-      .orderBy(locations.sortOrder, locations.id),
-  ])
-  const allLocations: LocNode[] = allLocationRows.map((l) => ({
-    id: l.id,
-    name: l.name,
-    parentId: l.parentId,
-    sortOrder: l.sortOrder,
-  }))
 
   // 服务端算"距今多少天"，避免 client 调 Date.now() 触发 react-hooks/purity
   const daysUntilExpired: number | null = row.expiredAt

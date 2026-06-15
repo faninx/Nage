@@ -8,7 +8,7 @@
 
 - **中文名**：纳格（拼音：Nà gé）
 - **英文名**：Nage
-- **版本**：v1.0.0
+- **版本**：v1.1.0
 - **栈**：Next.js 16 · React 19 · SQLite · Drizzle ORM · Tailwind v4 · shadcn/ui
 - **鉴权**：管理员模式（无公开注册，账号由管理员后台创建）
 - **部署**：Docker Compose，反代 BYO（Caddy / Nginx / Cloudflare Tunnel 任选）
@@ -25,6 +25,7 @@
 - 🔍 **搜索 + 筛选**：跨字段模糊搜索 + 位置/分类/标签/过期多维筛选 + 排序分页
 - 📷 **二维码**：每件物品一个，扫码直达详情
 - 📥 **数据导入导出**：JSON 格式，跨实例可迁移
+- 👥 **多用户/多空间协作**（v1.1）：一个空间可有多成员，三档角色（owner / editor / viewer），顶栏切换空间
 - 🔐 **管理员模式**：无公开注册，账号由管理员创建，密码 bcrypt 哈希，登录 5 次失败锁 10 分钟
 - 🐳 **一键部署**：Docker Compose，应用只听 :3000；HTTPS 由你的反代负责
 - 💾 **热备份**：`sqlite3 .backup` 在线备份，30 天滚动，cron 自动
@@ -100,7 +101,8 @@ src/
       categories/         # 分类
       tags/               # 标签
       admin/members/      # 成员管理（仅管理员）
-      admin/data/         # 数据导入/导出（仅管理员）
+      admin/data/         # 数据导入/导出（owner/editor 可操作自己空间）
+    spaces/               # 空间设置 + 新建空间（v1.1）
   lib/
     db/                   # Drizzle schema + 实例
     auth/                 # JWT / 密码 / session / bootstrap
@@ -121,7 +123,8 @@ scripts/                  # E2E 测试 + 备份/恢复
 - [x] **M3** 仪表盘（最近更新 + 快过期）
 - [x] **M4** 二维码 + 扫码 + 数据导入导出
 - [x] **M5** Docker 化 + 备份脚本 + 部署文档（反代 v1.0.1 起 BYO）
-- [ ] **v1.1** 借出归还 / 保质期增强 / PWA（待规划）
+- [x] **M7** 多用户/多空间协作（v1.1.0）：多空间 + 三档角色 + 空间设置 + 空间切换器 + 导入导出放宽
+- [ ] **v1.2** 借出归还 / 保质期增强 / PWA / i18n
 
 详细变更历史见 [CHANGELOG.md](./CHANGELOG.md)。
 部署指南见 [DEPLOY.md](./DEPLOY.md)。

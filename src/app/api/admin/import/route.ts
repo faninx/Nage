@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm"
 import { z } from "zod"
 import { db } from "@/lib/db"
 import { locations, categories, tags, items, itemTags, itemImages, spaces } from "@/lib/db/schema"
-import { requireAdmin } from "@/lib/auth/session"
+import { requireSession } from "@/lib/auth/session"
+import { hasSpaceAccess } from "@/lib/auth/space-access"
 
 export const dynamic = "force-dynamic"
 
@@ -55,20 +56,26 @@ const PayloadSchema = z.object({
 })
 
 /**
- * POST /api/admin/import
- * 接收 JSON 备份文件，**先清空当前空间**再写入。仅管理员。
+ * POST /api/admin/import?spaceId=N
+ * 接收 JSON 备份文件，**先清空指定空间**再写入。要求当前用户在目标空间是 owner 或 editor。
  * 注意：图片二进制需从原 public/uploads/ 恢复；JSON 只含路径。
  */
 export async function POST(req: NextRequest) {
-  const me = await requireAdmin()
+  const me = await requireSession()
+  const spaceId = Number(req.nextUrl.searchParams.get("spaceId"))
+  if (!Number.isInteger(spaceId) || spaceId <= 0) {
+    return NextResponse.json({ error: "缺少 spaceId 参数" }, { status: 400 })
+  }
+  if (!(await hasSpaceAccess(me.id, spaceId, "editor"))) {
+    return NextResponse.json({ error: "无权操作该空间" }, { status: 403 })
+  }
   const [space] = await db
     .select()
     .from(spaces)
-    .where(eq(spaces.ownerId, me.id))
-    .orderBy(spaces.id)
+    .where(eq(spaces.id, spaceId))
     .limit(1)
   if (!space) {
-    return NextResponse.json({ error: "未找到默认空间" }, { status: 400 })
+    return NextResponse.json({ error: "空间不存在" }, { status: 404 })
   }
 
   let text: string

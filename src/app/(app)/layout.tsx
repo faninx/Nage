@@ -4,13 +4,17 @@ import { logoutAction } from "../(auth)/login/actions"
 import { Button } from "@/components/ui/button"
 import { db } from "@/lib/db"
 import { locations } from "@/lib/db/schema"
-import { ensureDefaultSpace } from "@/lib/actions/spaces"
+import { getCurrentSpaceId, listAccessibleSpaces } from "@/lib/auth/space-access"
 import Link from "next/link"
 import { NavLinks } from "@/components/layout/nav-links"
 import { UserMenu } from "@/components/layout/user-menu"
 import { QuickAddFab } from "@/components/layout/quick-add-fab"
 import { ThemeToggle } from "@/components/layout/theme-toggle"
+import { SpaceSwitcher } from "@/components/layout/space-switcher"
 import type { LocNode } from "@/components/location-tree-select"
+import pkg from "../../../package.json"
+
+const APP_VERSION = pkg.version
 
 export default async function AppLayout({
   children,
@@ -18,7 +22,12 @@ export default async function AppLayout({
   children: React.ReactNode
 }) {
   const user = await requireSession()
-  const spaceId = await ensureDefaultSpace(user.id)
+  const spaceId = await getCurrentSpaceId(user.id)
+
+  // 顶栏空间切换器需要所有可访问空间；spaceId 由 getCurrentSpaceId 保证 ∈ accessible
+  const accessible = await listAccessibleSpaces(user.id)
+  // 当前空间的用户角色（用于决定是否显示「数据」入口）
+  const currentSpaceRole = accessible.find((s) => s.id === spaceId)?.role ?? null
 
   // 给全局 FAB 用：当前空间的位置列表（通常 < 100 条，传 props 简单）
   const userLocations: LocNode[] = await db
@@ -42,6 +51,9 @@ export default async function AppLayout({
   ]
   if (user.role === "admin") {
     navItems.push({ href: "/admin/members", label: "成员", key: "members" })
+  }
+  // 「数据」：当前空间是 owner / editor 即可（不要求系统管理员）
+  if (currentSpaceRole === "owner" || currentSpaceRole === "editor") {
     navItems.push({ href: "/admin/data", label: "数据", key: "data" })
   }
 
@@ -49,11 +61,19 @@ export default async function AppLayout({
     <div className="min-h-dvh flex flex-col">
       {/* 顶栏 */}
       <header className="border-b bg-background sticky top-0 z-20">
-        <div className="flex items-center justify-between px-4 h-14 max-w-7xl mx-auto">
-          <Link href="/" className="font-semibold text-lg">
-            纳格
-          </Link>
-          <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between px-4 h-14 max-w-7xl mx-auto gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <Link href="/" className="font-semibold text-lg shrink-0">
+              纳格
+            </Link>
+            {accessible.length > 0 && (
+              <SpaceSwitcher
+                spaces={accessible}
+                currentSpaceId={spaceId}
+              />
+            )}
+          </div>
+          <div className="flex items-center gap-3 min-w-0">
             <div className="hidden sm:flex items-center gap-2 text-sm">
               <UserMenu nickname={user.nickname} isAdmin={user.role === "admin"} />
             </div>
@@ -69,8 +89,11 @@ export default async function AppLayout({
 
       <div className="flex-1 max-w-7xl w-full mx-auto flex">
         {/* 侧栏（PC） */}
-        <aside className="hidden md:block w-56 shrink-0 border-r py-4 pr-2">
+        <aside className="hidden md:flex w-56 shrink-0 border-r py-4 pr-2 flex-col">
           <NavLinks items={navItems} />
+          <div className="mt-auto pt-4 px-3 text-xs text-muted-foreground">
+            v{APP_VERSION}
+          </div>
         </aside>
 
         {/* 主区 */}

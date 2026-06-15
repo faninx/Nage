@@ -11,7 +11,7 @@ import {
   itemImages,
 } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
-import { ensureDefaultSpace } from "@/lib/actions/spaces"
+import { getCurrentSpaceId } from "@/lib/auth/space-access"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,12 +20,12 @@ import { ExpiringSoonCard } from "./expiring-soon-card"
 
 export default async function DashboardPage() {
   const user = await requireSession()
-  const spaceId = await ensureDefaultSpace(user.id)
+  const spaceId = await getCurrentSpaceId(user.id)
 
   const [space] = await db
-    .select()
+    .select({ id: spaces.id, name: spaces.name })
     .from(spaces)
-    .where(and(eq(spaces.id, spaceId), eq(spaces.ownerId, user.id)))
+    .where(eq(spaces.id, spaceId))
     .limit(1)
 
   const [itemCount] = await db

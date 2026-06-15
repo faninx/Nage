@@ -3,14 +3,16 @@
 import { revalidatePath } from "next/cache"
 import { eq, and } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { spaces } from "@/lib/db/schema"
+import { spaces, spaceMembers, users } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
 import {
   CreateSpaceSchema,
   RenameSpaceSchema,
   DeleteSpaceSchema,
 } from "@/lib/validation/schemas"
-import { DEFAULT_SPACE_NAME, type ActionState } from "./types"
+import { hasSpaceAccess } from "@/lib/auth/space-access"
+import { revalidateMySpaces } from "./_cache"
+import { type ActionState } from "./types"
 
 export async function createSpaceAction(
   _prev: ActionState | undefined,
@@ -23,17 +25,29 @@ export async function createSpaceAction(
   }
   const { name } = parsed.data
 
-  // 同名下唯一
-  const [existing] = await db
-    .select()
+  // 同名下唯一（限定在用户有权限的空间里）
+  const accessible = await db
+    .select({ id: spaces.id })
     .from(spaces)
-    .where(and(eq(spaces.ownerId, user.id), eq(spaces.name, name)))
+    .innerJoin(spaceMembers, eq(spaceMembers.spaceId, spaces.id))
+    .where(and(eq(spaceMembers.userId, user.id), eq(spaces.name, name)))
     .limit(1)
-  if (existing) {
+  if (accessible.length > 0) {
     return { error: "已存在同名空间" }
   }
 
-  await db.insert(spaces).values({ name, ownerId: user.id })
+  const [created] = await db
+    .insert(spaces)
+    .values({ name, ownerId: user.id })
+    .returning({ id: spaces.id })
+  await db.insert(spaceMembers).values({
+    spaceId: created.id,
+    userId: user.id,
+    role: "owner",
+  })
+  // 自动切到新空间
+  await db.update(users).set({ lastSpaceId: created.id }).where(eq(users.id, user.id))
+  revalidateMySpaces()
   revalidatePath("/")
   return { ok: true }
 }
@@ -52,10 +66,27 @@ export async function renameSpaceAction(
   }
   const { id, name } = parsed.data
 
-  await db
-    .update(spaces)
-    .set({ name })
-    .where(and(eq(spaces.id, id), eq(spaces.ownerId, user.id)))
+  if (!(await hasSpaceAccess(user.id, id, "owner"))) {
+    return { error: "无权操作" }
+  }
+  // 检查同名（在该 user 自己的空间内，不含本 space 自身）
+  const [conflict] = await db
+    .select({ id: spaces.id })
+    .from(spaces)
+    .innerJoin(spaceMembers, eq(spaceMembers.spaceId, spaces.id))
+    .where(
+      and(
+        eq(spaceMembers.userId, user.id),
+        eq(spaces.name, name)
+      )
+    )
+    .limit(1)
+  if (conflict && conflict.id !== id) {
+    return { error: "已存在同名空间" }
+  }
+
+  await db.update(spaces).set({ name }).where(eq(spaces.id, id))
+  revalidateMySpaces()
   revalidatePath("/")
   return { ok: true }
 }
@@ -66,34 +97,27 @@ export async function deleteSpaceAction(formData: FormData): Promise<ActionState
   if (!parsed.success) return { error: "参数错误" }
   const { id } = parsed.data
 
-  // 至少保留 1 个空间
-  const userSpaces = await db
-    .select()
-    .from(spaces)
-    .where(eq(spaces.ownerId, user.id))
-  if (userSpaces.length <= 1) {
+  if (!(await hasSpaceAccess(user.id, id, "owner"))) {
+    return { error: "无权操作" }
+  }
+
+  // 至少保留 1 个空间（按"作为 owner 的空间"算）
+  const ownedRows = await db
+    .select({ id: spaceMembers.spaceId })
+    .from(spaceMembers)
+    .where(and(eq(spaceMembers.userId, user.id), eq(spaceMembers.role, "owner")))
+  if (ownedRows.length <= 1) {
     return { error: "至少保留一个空间" }
   }
 
+  // FK onDelete cascade 处理 locations/categories/tags/items/...
+  await db.delete(spaces).where(eq(spaces.id, id))
+  // 如果当前正在被删的就是 lastSpaceId，清掉
   await db
-    .delete(spaces)
-    .where(and(eq(spaces.id, id), eq(spaces.ownerId, user.id)))
+    .update(users)
+    .set({ lastSpaceId: null })
+    .where(and(eq(users.id, user.id), eq(users.lastSpaceId, id)))
+  revalidateMySpaces()
   revalidatePath("/")
   return { ok: true }
-}
-
-/** 用户首次进入系统时自动建默认空间。幂等。 */
-export async function ensureDefaultSpace(ownerId: number): Promise<number> {
-  const [existing] = await db
-    .select()
-    .from(spaces)
-    .where(and(eq(spaces.ownerId, ownerId), eq(spaces.name, DEFAULT_SPACE_NAME)))
-    .limit(1)
-  if (existing) return existing.id
-
-  const [created] = await db
-    .insert(spaces)
-    .values({ name: DEFAULT_SPACE_NAME, ownerId })
-    .returning({ id: spaces.id })
-  return created.id
 }

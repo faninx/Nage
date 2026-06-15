@@ -1,26 +1,33 @@
-import { NextResponse } from "next/server"
-import { eq, asc } from "drizzle-orm"
+import { NextRequest, NextResponse } from "next/server"
+import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
 import { locations, categories, tags, items, itemImages, itemTags, spaces } from "@/lib/db/schema"
-import { requireAdmin } from "@/lib/auth/session"
+import { requireSession } from "@/lib/auth/session"
+import { hasSpaceAccess } from "@/lib/auth/space-access"
 
 export const dynamic = "force-dynamic"
 
 /**
- * GET /api/admin/export
- * 导出全量数据为 JSON。仅管理员。
+ * GET /api/admin/export?spaceId=N
+ * 导出指定空间的全量数据为 JSON。要求当前用户在目标空间是 owner 或 editor。
  * 注意：图片二进制需单独备份 public/uploads/。
  */
-export async function GET() {
-  const me = await requireAdmin()
+export async function GET(req: NextRequest) {
+  const me = await requireSession()
+  const spaceId = Number(req.nextUrl.searchParams.get("spaceId"))
+  if (!Number.isInteger(spaceId) || spaceId <= 0) {
+    return NextResponse.json({ error: "缺少 spaceId 参数" }, { status: 400 })
+  }
+  if (!(await hasSpaceAccess(me.id, spaceId, "editor"))) {
+    return NextResponse.json({ error: "无权操作该空间" }, { status: 403 })
+  }
   const [space] = await db
     .select()
     .from(spaces)
-    .where(eq(spaces.ownerId, me.id))
-    .orderBy(asc(spaces.id))
+    .where(eq(spaces.id, spaceId))
     .limit(1)
   if (!space) {
-    return NextResponse.json({ error: "未找到默认空间" }, { status: 400 })
+    return NextResponse.json({ error: "空间不存在" }, { status: 404 })
   }
 
   const [allLocs, allCats, allTags, allItems, allImgs, allItemTags] = await Promise.all([
@@ -107,12 +114,15 @@ export async function GET() {
     })),
   }
 
-  const filename = `nage-export-${new Date().toISOString().replace(/[:.]/g, "-")}.json`
+  const filename = `nage-export-${space.name}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`
+  // RFC 5987：非 ASCII 文件名必须用 filename*=UTF-8''<percent-encoded>，
+  // 否则浏览器/Node 直接拒（"character > 255"）。filename= 留 ASCII 兜底。
+  const asciiFallback = filename.replace(/[^\x20-\x7E]/g, "_")
   return new NextResponse(JSON.stringify(payload, null, 2), {
     status: 200,
     headers: {
       "Content-Type": "application/json; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Content-Disposition": `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
     },
   })
 }

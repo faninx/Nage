@@ -56,7 +56,7 @@
 | F7 | **二维码** | 每个物品/位置生成唯一二维码，可下载、打印 |
 | F8 | **数量管理** | 同一物品多件时记数量（不入多个条目） |
 | F9 | **账号系统（管理员模式）** | ❌ 无公开注册。首次启动用环境变量创建 1 个管理员；管理员在后台为家庭成员开账号；JWT + bcrypt |
-| F10 | **空间隔离** | 每个用户一个默认"空间"，可手动创建多个空间（如"家"+"公司"） |
+| F10 | **空间隔离 + 多用户协作** | 每个用户一个默认"空间"，可手动创建多个空间（如"家"+"公司"）；每个空间可有多个成员（owner/editor/viewer 三档角色） |
 | F11 | **响应式 UI** | PC（表格/侧栏）+ 移动（卡片/底部导航） |
 | F12 | **统计概览** | 首页仪表盘：物品总数、位置数、最近添加 |
 | F15★ | **导入/导出** | CSV / JSON 格式全量备份恢复（⭐ 从 v1.1 提升到 v1.0，因你要公网部署，需要备份能力） |
@@ -115,11 +115,20 @@ users (
   nickname, avatar,
   role,                  -- 'admin' | 'member'
   is_active,             -- 管理员可停用某成员
-  created_at, last_login_at
+  created_at, last_login_at,
+  last_space_id          -- 记住上次所在空间（v1.1，FK → spaces.id ON DELETE SET NULL）
 )
 
 -- 空间（隔离数据用）
 spaces (id, name, owner_id, created_at)
+
+-- 空间成员（v1.1）：一个空间多个成员，每个成员有角色
+space_members (
+  space_id, user_id,
+  role,                  -- 'owner' | 'editor' | 'viewer'
+  created_at,
+  PRIMARY KEY (space_id, user_id)
+)
 
 -- 位置（树形）
 locations (
@@ -246,7 +255,8 @@ borrow_records (id, item_id, borrower, borrowed_at, expected_return_at, returned
 | **M3** | 前端响应式 UI（PC + 移动）+ 仪表盘 + 鉴权页面 |
 | **M4** | 二维码生成 + 移动端扫码查看 + 导入/导出（JSON） |
 | **M5** | Docker 化 + 部署文档 + 备份脚本 |
-| **M6+** | v1.1：借出归还 / 保质期增强 / PWA（暗黑模式已在 v1.0 完成） |
+| **M7** | 多用户/多空间协作（v1.1.0 ✅）：`space_members` 表 + `users.last_space_id` + 三档角色 + 空间设置/切换 + 导入导出放宽 |
+| **M6+** | v1.2：借出归还 / 保质期增强收口 / PWA / i18n（暗黑模式已在 v1.0 完成） |
 
 ---
 
@@ -273,12 +283,22 @@ borrow_records (id, item_id, borrower, borrowed_at, expected_return_at, returned
 4. **改密**：用户自己在"我的 → 修改密码"页改；管理员可在成员管理页重置
 
 ### 12.2 权限
-| 操作 | 管理员 | 普通成员 |
+
+**系统级**（admin = 系统管理员）：
+
+| 操作 | 系统管理员 | 普通成员 |
 |---|---|---|
 | 添加/删除成员 | ✅ | ❌ |
-| 所有物品的增删改 | ✅ | ✅（自己的空间内） |
-| 导入/导出 | ✅ | ❌（v1.0 仅管理员） |
 | 修改系统设置 | ✅ | ❌ |
+
+**空间级**（owner / editor / viewer = 空间内角色，对所有用户一视同仁）：
+
+| 操作 | owner | editor | viewer |
+|---|---|---|---|
+| 增删改物品/位置/分类/标签 | ✅ | ✅ | ❌（只读） |
+| 改空间名 / 删空间 | ✅ | ❌ | ❌ |
+| 邀请/移除/改角色成员 | ✅ | ❌ | ❌ |
+| 导入/导出该空间数据 | ✅ | ✅ | ❌ |
 
 ### 12.3 安全要点
 - 密码 bcrypt cost=12 哈希

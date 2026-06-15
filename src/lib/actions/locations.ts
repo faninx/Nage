@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache"
 import { eq, and, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { locations, spaces } from "@/lib/db/schema"
+import { locations, type SpaceRole } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
+import { hasSpaceAccess } from "@/lib/auth/space-access"
 import {
   CreateLocationSchema,
   RenameLocationSchema,
@@ -86,27 +87,15 @@ async function getSpaceOfLocation(locationId: number): Promise<number | null> {
   return row?.spaceId ?? null
 }
 
-async function userOwnsLocation(
+async function userAccessToLocation(
   userId: number,
-  locationId: number
+  locationId: number,
+  minRole: SpaceRole = "editor"
 ): Promise<{ ok: boolean; spaceId: number | null }> {
   const spaceId = await getSpaceOfLocation(locationId)
   if (!spaceId) return { ok: false, spaceId: null }
-  const [own] = await db
-    .select()
-    .from(spaces)
-    .where(and(eq(spaces.id, spaceId), eq(spaces.ownerId, userId)))
-    .limit(1)
-  return { ok: !!own, spaceId }
-}
-
-async function userOwnsSpace(userId: number, spaceId: number): Promise<boolean> {
-  const [own] = await db
-    .select()
-    .from(spaces)
-    .where(and(eq(spaces.id, spaceId), eq(spaces.ownerId, userId)))
-    .limit(1)
-  return !!own
+  const ok = await hasSpaceAccess(userId, spaceId, minRole)
+  return { ok, spaceId }
 }
 
 export async function createLocationAction(
@@ -125,7 +114,7 @@ export async function createLocationAction(
   }
   const { spaceId, parentId, name, description } = parsed.data
 
-  if (!(await userOwnsSpace(user.id, spaceId))) {
+  if (!(await hasSpaceAccess(user.id, spaceId, "editor"))) {
     return { error: "无权操作该空间" }
   }
 
@@ -182,7 +171,7 @@ export async function renameLocationAction(
   }
   const { id, name } = parsed.data
 
-  const access = await userOwnsLocation(user.id, id)
+  const access = await userAccessToLocation(user.id, id, "editor")
   if (!access.ok) return { error: "无权操作" }
 
   await db.update(locations).set({ name }).where(eq(locations.id, id))
@@ -196,7 +185,7 @@ export async function deleteLocationAction(formData: FormData): Promise<ActionSt
   if (!parsed.success) return { error: "参数错误" }
   const { id } = parsed.data
 
-  const access = await userOwnsLocation(user.id, id)
+  const access = await userAccessToLocation(user.id, id, "editor")
   if (!access.ok) return { error: "无权操作" }
 
   // cascade 子树由 FK onDelete: cascade 处理
@@ -220,7 +209,7 @@ export async function moveLocationAction(
   }
   const { id, newParentId } = parsed.data
 
-  const access = await userOwnsLocation(user.id, id)
+  const access = await userAccessToLocation(user.id, id, "editor")
   if (!access.ok) return { error: "无权操作" }
 
   if (newParentId === id) return { error: "不能移到自身" }
@@ -271,7 +260,7 @@ export async function reorderLocationAction(
   }
   const { id, newParentId, beforeId } = parsed.data
 
-  const access = await userOwnsLocation(user.id, id)
+  const access = await userAccessToLocation(user.id, id, "editor")
   if (!access.ok) return { error: "无权操作" }
 
   if (newParentId === id) return { error: "不能移到自身" }

@@ -7,7 +7,12 @@ import { Download, Upload, AlertTriangle, CheckCircle2 } from "lucide-react"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { toast } from "sonner"
 
-export function DataManagementClient() {
+type Props = {
+  spaceId: number
+  spaceName: string
+}
+
+export function DataManagementClient({ spaceId, spaceName }: Props) {
   const router = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
@@ -15,7 +20,7 @@ export function DataManagementClient() {
   const { confirm, dialog: confirmDialog } = useConfirm()
 
   function handleExport() {
-    window.location.href = "/api/admin/export"
+    window.location.href = `/api/admin/export?spaceId=${spaceId}`
   }
 
   function handleImportClick() {
@@ -33,7 +38,7 @@ export function DataManagementClient() {
     if (
       !(await confirm({
         title: "确定继续导入？",
-        description: "导入会先清空当前空间的所有数据，然后写入文件内容。",
+        description: `导入会先清空「${spaceName}」内的所有数据，然后写入文件内容。`,
         destructive: true,
         confirmText: "继续导入",
       }))
@@ -44,7 +49,7 @@ export function DataManagementClient() {
     const text = await file.text()
     startImport(async () => {
       try {
-        const res = await fetch("/api/admin/import", {
+        const res = await fetch(`/api/admin/import?spaceId=${spaceId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: text,
@@ -69,7 +74,7 @@ export function DataManagementClient() {
       <div className="flex flex-wrap gap-2">
         <Button onClick={handleExport} variant="outline">
           <Download className="size-4" />
-          导出全量 JSON
+          导出「{spaceName}」为 JSON
         </Button>
         <Button
           onClick={handleImportClick}

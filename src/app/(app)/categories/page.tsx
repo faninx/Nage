@@ -1,23 +1,13 @@
-import { eq, and, sql } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { categories, items, spaces } from "@/lib/db/schema"
+import { categories, items } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
-import { ensureDefaultSpace } from "@/lib/actions/spaces"
+import { getCurrentSpaceId } from "@/lib/auth/space-access"
 import { CategoriesClient } from "./categories-client"
 
 export default async function CategoriesPage() {
   const user = await requireSession()
-  const spaceId = await ensureDefaultSpace(user.id)
-
-  // 二次校验：确保 user 确实拥有这个 space
-  const [own] = await db
-    .select()
-    .from(spaces)
-    .where(and(eq(spaces.id, spaceId), eq(spaces.ownerId, user.id)))
-    .limit(1)
-  if (!own) {
-    throw new Error("空间归属校验失败")
-  }
+  const spaceId = await getCurrentSpaceId(user.id)
 
   const list = await db
     .select({

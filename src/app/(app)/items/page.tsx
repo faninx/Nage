@@ -1,8 +1,8 @@
-import { eq, and } from "drizzle-orm"
+import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { categories, locations, tags, spaces } from "@/lib/db/schema"
+import { categories, locations, tags } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
-import { ensureDefaultSpace } from "@/lib/actions/spaces"
+import { getCurrentSpaceId } from "@/lib/auth/space-access"
 import { ItemListSearchSchema } from "@/lib/validation/schemas"
 import { queryItems, PAGE_SIZE, expandLocationIds } from "@/lib/db/items-query"
 import { ItemsClient } from "./items-client"
@@ -13,14 +13,7 @@ export default async function ItemsPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
   const user = await requireSession()
-  const spaceId = await ensureDefaultSpace(user.id)
-
-  const [own] = await db
-    .select()
-    .from(spaces)
-    .where(and(eq(spaces.id, spaceId), eq(spaces.ownerId, user.id)))
-    .limit(1)
-  if (!own) throw new Error("空间归属校验失败")
+  const spaceId = await getCurrentSpaceId(user.id)
 
   const raw = await props.searchParams
   const sp = ItemListSearchSchema.safeParse({

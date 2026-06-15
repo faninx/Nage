@@ -51,7 +51,7 @@ export async function recordFailure(username: string): Promise<void> {
         // 只在原本没锁定时设置新的锁定时间
         lockedUntil: sql`CASE
           WHEN ${loginAttempts.lockedUntil} IS NULL OR ${loginAttempts.lockedUntil} <= ${now}
-          THEN datetime(${now} + ${LOCK_DURATION_MS / 1000}, 'unixepoch')
+          THEN ${now + LOCK_DURATION_MS / 1000}
           ELSE ${loginAttempts.lockedUntil}
         END`,
       },

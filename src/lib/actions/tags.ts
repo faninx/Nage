@@ -3,23 +3,15 @@
 import { revalidatePath } from "next/cache"
 import { eq, and } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { tags, spaces } from "@/lib/db/schema"
+import { tags } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
+import { hasSpaceAccess } from "@/lib/auth/space-access"
 import {
   CreateTagSchema,
   UpdateTagSchema,
   DeleteTagSchema,
 } from "@/lib/validation/schemas"
 import type { ActionState } from "./types"
-
-async function userOwnsSpace(userId: number, spaceId: number): Promise<boolean> {
-  const [own] = await db
-    .select()
-    .from(spaces)
-    .where(and(eq(spaces.id, spaceId), eq(spaces.ownerId, userId)))
-    .limit(1)
-  return !!own
-}
 
 export async function createTagAction(
   _prev: ActionState | undefined,
@@ -36,7 +28,7 @@ export async function createTagAction(
   }
   const { spaceId, name, color } = parsed.data
 
-  if (!(await userOwnsSpace(user.id, spaceId))) {
+  if (!(await hasSpaceAccess(user.id, spaceId, "editor"))) {
     return { error: "无权操作该空间" }
   }
 
@@ -85,7 +77,7 @@ export async function updateTagAction(
     .where(eq(tags.id, id))
     .limit(1)
   if (!tag) return { error: "标签不存在" }
-  if (!(await userOwnsSpace(user.id, tag.spaceId))) {
+  if (!(await hasSpaceAccess(user.id, tag.spaceId, "editor"))) {
     return { error: "无权操作" }
   }
 
@@ -116,7 +108,7 @@ export async function deleteTagAction(formData: FormData): Promise<ActionState> 
     .where(eq(tags.id, id))
     .limit(1)
   if (!tag) return { error: "标签不存在" }
-  if (!(await userOwnsSpace(user.id, tag.spaceId))) {
+  if (!(await hasSpaceAccess(user.id, tag.spaceId, "editor"))) {
     return { error: "无权操作" }
   }
 

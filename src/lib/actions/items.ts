@@ -5,8 +5,9 @@ import { rm } from "node:fs/promises"
 import path from "node:path"
 import { eq, and, inArray } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { items, spaces, categories, locations, itemTags, tags, itemImages } from "@/lib/db/schema"
+import { items, categories, locations, itemTags, tags, itemImages, type SpaceRole } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
+import { hasSpaceAccess } from "@/lib/auth/space-access"
 import {
   CreateItemSchema,
   UpdateItemSchema,
@@ -18,24 +19,24 @@ import { uploadItemImages } from "./images"
 import { queryItems, queryItemById, type SearchResult } from "@/lib/db/items-query"
 import type { ActionState } from "./types"
 
-async function userOwnsSpace(userId: number, spaceId: number): Promise<boolean> {
-  const [own] = await db
-    .select()
-    .from(spaces)
-    .where(and(eq(spaces.id, spaceId), eq(spaces.ownerId, userId)))
-    .limit(1)
-  return !!own
-}
-
-async function userOwnsItem(userId: number, itemId: number): Promise<{ spaceId: number } | null> {
+async function getItemSpaceId(itemId: number): Promise<number | null> {
   const [row] = await db
-    .select({ spaceId: items.spaceId, ownerId: spaces.ownerId })
+    .select({ spaceId: items.spaceId })
     .from(items)
-    .innerJoin(spaces, eq(items.spaceId, spaces.id))
     .where(eq(items.id, itemId))
     .limit(1)
-  if (!row || row.ownerId !== userId) return null
-  return { spaceId: row.spaceId }
+  return row?.spaceId ?? null
+}
+
+async function userAccessToItem(
+  userId: number,
+  itemId: number,
+  minRole: SpaceRole = "editor"
+): Promise<{ ok: boolean; spaceId: number | null }> {
+  const spaceId = await getItemSpaceId(itemId)
+  if (!spaceId) return { ok: false, spaceId: null }
+  const ok = await hasSpaceAccess(userId, spaceId, minRole)
+  return { ok, spaceId }
 }
 
 async function validateTagOwnership(tagIds: number[], spaceId: number): Promise<string | null> {
@@ -141,7 +142,7 @@ export async function createItemAction(
   }
   const { spaceId, name, description, categoryId, locationId, quantity, unit, price, tagIds, expiredAt } = parsed.data
 
-  if (!(await userOwnsSpace(user.id, spaceId))) {
+  if (!(await hasSpaceAccess(user.id, spaceId, "editor"))) {
     return { error: "无权操作该空间" }
   }
 
@@ -221,15 +222,15 @@ export async function updateItemAction(
   }
   const { id, name, description, categoryId, locationId, quantity, unit, price, tagIds, expiredAt, imageOrder } = parsed.data
 
-  const own = await userOwnsItem(user.id, id)
-  if (!own) return { error: "物品不存在或无权操作" }
-  const { spaceId } = own
+  const access = await userAccessToItem(user.id, id, "editor")
+  if (!access.ok) return { error: "物品不存在或无权操作" }
+  const { spaceId } = access
 
   if (categoryId) {
     const [c] = await db
       .select()
       .from(categories)
-      .where(and(eq(categories.id, categoryId), eq(categories.spaceId, spaceId)))
+      .where(and(eq(categories.id, categoryId), eq(categories.spaceId, spaceId!)))
       .limit(1)
     if (!c) return { error: "所选分类不存在或不属于该空间" }
   }
@@ -237,7 +238,7 @@ export async function updateItemAction(
     const [l] = await db
       .select()
       .from(locations)
-      .where(and(eq(locations.id, locationId), eq(locations.spaceId, spaceId)))
+      .where(and(eq(locations.id, locationId), eq(locations.spaceId, spaceId!)))
       .limit(1)
     if (!l) return { error: "所选位置不存在或不属于该空间" }
   }
@@ -258,7 +259,7 @@ export async function updateItemAction(
     .where(eq(items.id, id))
 
   try {
-    await syncItemTags(id, tagIds, spaceId)
+    await syncItemTags(id, tagIds, spaceId!)
   } catch (e) {
     return { error: e instanceof Error ? e.message : "标签关联失败" }
   }
@@ -284,8 +285,8 @@ export async function deleteItemAction(formData: FormData): Promise<ActionState>
   if (!parsed.success) return { error: "参数错误" }
   const { id } = parsed.data
 
-  const own = await userOwnsItem(user.id, id)
-  if (!own) return { error: "物品不存在或无权操作" }
+  const access = await userAccessToItem(user.id, id, "editor")
+  if (!access.ok) return { error: "物品不存在或无权操作" }
 
   await db.delete(items).where(eq(items.id, id))
   await cleanupItemDisk(id)
@@ -304,16 +305,18 @@ export async function deleteItemsAction(formData: FormData): Promise<ActionState
   const parsed = DeleteItemsSchema.safeParse({ ids })
   if (!parsed.success) return { error: "参数错误" }
 
-  const owned = await db
-    .select({ id: items.id, spaceId: items.spaceId, ownerId: spaces.ownerId })
+  // 取所有 item 的 spaceId，逐个校验权限
+  const rows = await db
+    .select({ id: items.id, spaceId: items.spaceId })
     .from(items)
-    .innerJoin(spaces, eq(items.spaceId, spaces.id))
     .where(inArray(items.id, parsed.data.ids))
-  if (owned.length !== parsed.data.ids.length) {
+  if (rows.length !== parsed.data.ids.length) {
     return { error: "部分物品不存在或无权操作" }
   }
-  if (owned.some((r) => r.ownerId !== user.id)) {
-    return { error: "无权操作" }
+  for (const r of rows) {
+    if (!(await hasSpaceAccess(user.id, r.spaceId, "editor"))) {
+      return { error: "无权操作" }
+    }
   }
 
   await db.delete(items).where(inArray(items.id, parsed.data.ids))
@@ -334,7 +337,7 @@ export async function getItemAction(input: {
   tagIds: number[]
 }> {
   const user = await requireSession()
-  if (!(await userOwnsSpace(user.id, input.spaceId))) {
+  if (!(await hasSpaceAccess(user.id, input.spaceId, "viewer"))) {
     throw new Error("无权操作该空间")
   }
   const { item, images } = await queryItemById(input.spaceId, input.id)
@@ -372,7 +375,7 @@ export async function searchItemsAction(input: {
   if (!parsed.success) {
     throw new Error(parsed.error.issues[0]?.message ?? "参数错误")
   }
-  if (!(await userOwnsSpace(user.id, input.spaceId))) {
+  if (!(await hasSpaceAccess(user.id, input.spaceId, "viewer"))) {
     throw new Error("无权操作该空间")
   }
   return queryItems({

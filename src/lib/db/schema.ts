@@ -1,5 +1,25 @@
-import { sqliteTable, text, integer, real, primaryKey, index } from "drizzle-orm/sqlite-core"
+import {
+  sqliteTable,
+  text,
+  integer,
+  real,
+  primaryKey,
+  index,
+  type AnySQLiteColumn,
+} from "drizzle-orm/sqlite-core"
 import { relations, sql } from "drizzle-orm"
+
+// ============================================================
+// 角色（空间级 ACL 用）
+// ============================================================
+export const SPACE_ROLES = ["owner", "editor", "viewer"] as const
+export type SpaceRole = (typeof SPACE_ROLES)[number]
+
+/** 角色比较：rank(owner=3) >= rank(viewer=1) 即可通过。 */
+export function spaceRoleAtLeast(have: SpaceRole, min: SpaceRole): boolean {
+  const rank: Record<SpaceRole, number> = { viewer: 1, editor: 2, owner: 3 }
+  return rank[have] >= rank[min]
+}
 
 // ============================================================
 // 用户（管理员模式，无公开注册）
@@ -16,6 +36,11 @@ export const users = sqliteTable("users", {
     .notNull()
     .default(sql`(unixepoch())`),
   lastLoginAt: integer("last_login_at", { mode: "timestamp" }),
+  // 当前所在空间（M7.3 起空间切换器用）。NULL = 让服务端 fallback 到自己的默认空间。
+  // onDelete: "set null" 防止删空间后这个字段还指着一个不存在的 id
+  lastSpaceId: integer("last_space_id").references((): AnySQLiteColumn => spaces.id, {
+    onDelete: "set null",
+  }),
 })
 
 // ============================================================
@@ -26,6 +51,8 @@ export const spaces = sqliteTable(
   {
     id: integer("id").primaryKey({ autoIncrement: true }),
     name: text("name").notNull(),
+    // ownerId 保留作为"创建者/主拥有者"字段，但权限真正由 space_members.role 决定。
+    // 主 owner 永远在 space_members 里有一行 role='owner'；外键 cascade 在他被删时一起删空间。
     ownerId: integer("owner_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -34,6 +61,30 @@ export const spaces = sqliteTable(
       .default(sql`(unixepoch())`),
   },
   (t) => [index("spaces_owner_idx").on(t.ownerId)]
+)
+
+// ============================================================
+// 空间成员（M7 起：空间级 ACL）
+// 复合主键 (spaceId, userId)；删除空间 / 用户自动 cascade。
+// ============================================================
+export const spaceMembers = sqliteTable(
+  "space_members",
+  {
+    spaceId: integer("space_id")
+      .notNull()
+      .references(() => spaces.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role", { enum: SPACE_ROLES }).notNull().default("editor"),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+  },
+  (t) => [
+    primaryKey({ columns: [t.spaceId, t.userId] }),
+    index("space_members_user_idx").on(t.userId),
+  ]
 )
 
 // ============================================================
@@ -175,6 +226,7 @@ export const loginAttempts = sqliteTable("login_attempts", {
 // ============================================================
 export const usersRelations = relations(users, ({ many }) => ({
   spaces: many(spaces),
+  spaceMembers: many(spaceMembers),
 }))
 
 export const spacesRelations = relations(spaces, ({ one, many }) => ({
@@ -183,6 +235,12 @@ export const spacesRelations = relations(spaces, ({ one, many }) => ({
   categories: many(categories),
   tags: many(tags),
   items: many(items),
+  members: many(spaceMembers),
+}))
+
+export const spaceMembersRelations = relations(spaceMembers, ({ one }) => ({
+  space: one(spaces, { fields: [spaceMembers.spaceId], references: [spaces.id] }),
+  user: one(users, { fields: [spaceMembers.userId], references: [users.id] }),
 }))
 
 export const locationsRelations = relations(locations, ({ one, many }) => ({
@@ -236,6 +294,8 @@ export type User = typeof users.$inferSelect
 export type NewUser = typeof users.$inferInsert
 export type Space = typeof spaces.$inferSelect
 export type NewSpace = typeof spaces.$inferInsert
+export type SpaceMember = typeof spaceMembers.$inferSelect
+export type NewSpaceMember = typeof spaceMembers.$inferInsert
 export type Location = typeof locations.$inferSelect
 export type NewLocation = typeof locations.$inferInsert
 export type Category = typeof categories.$inferSelect

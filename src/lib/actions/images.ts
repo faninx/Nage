@@ -6,8 +6,9 @@ import { existsSync } from "node:fs"
 import path from "node:path"
 import sharp from "sharp"
 import { db } from "@/lib/db"
-import { items, itemImages, spaces } from "@/lib/db/schema"
+import { items, itemImages } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
+import { hasSpaceAccess } from "@/lib/auth/space-access"
 import { DeleteItemImageSchema } from "@/lib/validation/schemas"
 import {
   MAX_IMAGES_PER_ITEM,
@@ -18,14 +19,17 @@ import {
 const TARGET_LONG_EDGE = 1080
 const JPEG_QUALITY = 80
 
-async function userOwnsItem(userId: number, itemId: number): Promise<boolean> {
+async function userAccessToItemEdit(
+  userId: number,
+  itemId: number
+): Promise<boolean> {
   const [row] = await db
-    .select({ ownerId: spaces.ownerId })
+    .select({ spaceId: items.spaceId })
     .from(items)
-    .innerJoin(spaces, eq(items.spaceId, spaces.id))
     .where(eq(items.id, itemId))
     .limit(1)
-  return row?.ownerId === userId
+  if (!row) return false
+  return hasSpaceAccess(userId, row.spaceId, "editor")
 }
 
 /** 把单张图保存到 public/uploads/items/{itemId}/{idx}.jpg。返回相对路径 `/uploads/items/...` 与字节数。 */
@@ -68,7 +72,7 @@ export async function uploadItemImages(
   formData: FormData
 ): Promise<number> {
   const user = await requireSession()
-  if (!(await userOwnsItem(user.id, itemId))) {
+  if (!(await userAccessToItemEdit(user.id, itemId))) {
     throw new Error("无权操作该物品")
   }
 
@@ -119,12 +123,14 @@ export async function deleteItemImageAction(
   const { id } = parsed.data
 
   const [img] = await db
-    .select()
+    .select({ id: itemImages.id, itemId: itemImages.itemId, path: itemImages.path })
     .from(itemImages)
     .where(eq(itemImages.id, id))
     .limit(1)
   if (!img) return { error: "图片不存在" }
-  if (!(await userOwnsItem(user.id, img.itemId))) return { error: "无权操作" }
+  if (!(await userAccessToItemEdit(user.id, img.itemId))) {
+    return { error: "无权操作" }
+  }
 
   const absPath = path.join(process.cwd(), "public", img.path.replace(/^\//, ""))
   if (existsSync(absPath)) {

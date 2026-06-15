@@ -1,22 +1,13 @@
-import { eq, and, sql } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { tags, itemTags, spaces } from "@/lib/db/schema"
+import { tags, itemTags } from "@/lib/db/schema"
 import { requireSession } from "@/lib/auth/session"
-import { ensureDefaultSpace } from "@/lib/actions/spaces"
+import { getCurrentSpaceId } from "@/lib/auth/space-access"
 import { TagsClient } from "./tags-client"
 
 export default async function TagsPage() {
   const user = await requireSession()
-  const spaceId = await ensureDefaultSpace(user.id)
-
-  const [own] = await db
-    .select()
-    .from(spaces)
-    .where(and(eq(spaces.id, spaceId), eq(spaces.ownerId, user.id)))
-    .limit(1)
-  if (!own) {
-    throw new Error("空间归属校验失败")
-  }
+  const spaceId = await getCurrentSpaceId(user.id)
 
   const list = await db
     .select({
