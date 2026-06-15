@@ -1,0 +1,103 @@
+name: docker-publish
+
+# 触发：
+#  1) 推送 v* tag（如 v1.1.0 / v1.2.0-rc.1）→ 自动 build + push 多架构镜像
+#  2) 手动 workflow_dispatch（run workflow）→ 跑 master 分支，tag 写成输入值
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "git ref（分支/tag/SHA）"
+        required: true
+        default: "master"
+      tag:
+        description: "推送的 tag 列表，逗号分隔（留空 = latest）"
+        required: false
+        default: "latest"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}   # faninx/Nage → ghcr.io/faninx/nage（小写自动）
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read      # checkout
+      packages: write     # 推 ghcr.io
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # dispatch 时允许切到指定 ref；tag 触发时默认就是 tag 本身
+          ref: ${{ github.event.inputs.ref || github.ref }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Resolve metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # 优先用 workflow_dispatch 输入的 tag；否则从 git tag 自动推断
+          tags: |
+            # dispatch 模式
+            ${{ inputs.tag && format('type=raw,value={0}', inputs.tag) || '' }}
+            # tag 触发：从 github.ref_name 推 4 种 tag
+            type=semver,pattern={{version}}        # 1.1.0
+            type=semver,pattern={{major}}.{{minor}} # 1.1
+            type=raw,value=${{ github.ref_name }}   # v1.1.0
+            # 仅 stable 才打 latest（带 -rc/-alpha/-beta 的不算）
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+          labels: |
+            org.opencontainers.image.title=Nage
+            org.opencontainers.image.description=轻量、自托管的家庭 / 小团队物品收纳管理系统
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.licenses=GPL-3.0
+
+      - name: Log in to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 复用 GitHub Actions 缓存（key 按 git ref 分桶），加速后续 build
+          cache-from: type=gha,scope=${{ github.ref_name }}
+          cache-to: type=gha,scope=${{ github.ref_name }},mode=max
+          # SBOM + provenance 镜像
+          sbom: true
+          provenance: mode=max
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "### Docker 镜像发布成功 ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**镜像地址**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**打上的 tag**" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
