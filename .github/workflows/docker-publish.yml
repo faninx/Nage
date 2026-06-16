@@ -18,9 +18,15 @@ on:
         required: false
         default: "latest"
 
+# 需要的 secrets（仓库 Settings → Secrets and variables → Actions）：
+#   - DOCKERHUB_USERNAME  : Docker Hub 用户名（faninx）
+#   - DOCKERHUB_TOKEN     : Docker Hub Access Token
+#                          （https://hub.docker.com/settings/security
+#                           → New Access Token → Read, Write, Delete）
+#   - GITHUB_TOKEN        : 自动提供，无需配置
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}   # faninx/Nage → ghcr.io/faninx/nage（小写自动）
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}   # faninx/Nage → ghcr.io/faninx/nage
+  DH_IMAGE: docker.io/faninx/nage                # Docker Hub 镜像固定为 faninx/nage
 
 jobs:
   build:
@@ -46,7 +52,10 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # 两个镜像共用同一组 tag（一条 metadata 输出喂给两个 registry）
+          images: |
+            ${{ env.GHCR_IMAGE }}
+            ${{ env.DH_IMAGE }}
           # 优先用 workflow_dispatch 输入的 tag；否则从 git tag 自动推断
           tags: |
             # dispatch 模式
@@ -67,9 +76,17 @@ jobs:
       - name: Log in to ghcr.io
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+        # 没配 Docker Hub secrets 时跳过（仅推 ghcr.io）
+        continue-on-error: false
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -78,6 +95,7 @@ jobs:
           file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
+          # 喂两组 tag（一个流，用换行分隔）—— 同一镜像 manifest 会同时打到两个 registry
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           # 复用 GitHub Actions 缓存（key 按 git ref 分桶），加速后续 build
@@ -94,7 +112,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**镜像地址**" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
-          echo ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }} >> $GITHUB_STEP_SUMMARY
+          echo "${{ env.GHCR_IMAGE }}" >> $GITHUB_STEP_SUMMARY
+          echo "${{ env.DH_IMAGE }}" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**打上的 tag**" >> $GITHUB_STEP_SUMMARY
