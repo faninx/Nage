@@ -5,6 +5,22 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.0] - 2026-06-17
+
+### 新增（详情页图片全屏查看）
+
+- **点击图片放大**:详情页 carousel 任意图片点击 → 全屏 Dialog 看大图
+- **滚轮缩放 + 缩放点跟着鼠标**:指数级缩放（`Math.exp(-deltaY * 0.002)`），clamp [0.1, 10]，鼠标位置稳定不变
+- **拖拽平移**:Pointer Events + `setPointerCapture`，鼠标 / 触摸 / 笔统一
+- **重置按钮 (1:1 实际大小)**:顶栏居中 `↺` 图标（`RotateCcw`）点击 = `fitTo1to1()` = scale=1 + 图片居中
+- **缩略图条切图**:底部居中缩略图条（所有图），当前高亮白边，点切图；多图键盘 ←/→ wrap-around
+- **a11y**:`DialogTitle` sr-only + 各按钮 `aria-label` 完整
+
+### 优化
+
+- **标签选择器**:选中标签直接内联显示在 trigger 内（chip 列表 + X 单删），不再藏在下拉里
+- **物品表单描述字段**:`Input` → `Textarea`（rows=3, maxLength=2000），可写多行描述
+
 ## [1.1.1] - 2026-06-16
 
 ### 变更（Docker 镜像瘦身）
