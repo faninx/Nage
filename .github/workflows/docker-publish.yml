@@ -42,6 +42,11 @@ jobs:
           # dispatch 时允许切到指定 ref；tag 触发时默认就是 tag 本身
           ref: ${{ github.event.inputs.ref || github.ref }}
 
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
