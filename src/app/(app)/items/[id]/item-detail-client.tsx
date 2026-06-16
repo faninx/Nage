@@ -25,8 +25,11 @@ import {
   ChevronRight,
   Pencil,
   QrCode,
+  RotateCcw,
   Trash2,
   Package,
+  X,
+  ZoomIn,
 } from "lucide-react"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
@@ -322,6 +325,7 @@ export function ItemDetailClient({ item, categories, locations, tags }: Props) {
 
 // ============================================================
 // ImageCarousel — CSS scroll-snap, 简单高效，无依赖
+// 点击任意图进入全屏放大查看（ZoomView）
 // ============================================================
 function ImageCarousel({
   images,
@@ -331,6 +335,7 @@ function ImageCarousel({
   alt: string
 }) {
   const [idx, setIdx] = useState(0)
+  const [zoomIdx, setZoomIdx] = useState<number | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -345,11 +350,46 @@ function ImageCarousel({
     return () => el.removeEventListener("scroll", onScroll)
   }, [images.length])
 
+  // 全屏模式下方向键翻页
+  useEffect(() => {
+    if (zoomIdx === null) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "ArrowLeft") {
+        setZoomIdx((i) =>
+          i === null ? null : (i - 1 + images.length) % images.length
+        )
+      } else if (e.key === "ArrowRight") {
+        setZoomIdx((i) =>
+          i === null ? null : (i + 1) % images.length
+        )
+      }
+    }
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [zoomIdx, images.length])
+
   function go(delta: number) {
     const el = scrollRef.current
     if (!el) return
-    const next = Math.max(0, Math.min(images.length - 1, idx + delta))
+    // 回环:最后一张的下一张 = 第一张
+    const next = ((idx + delta) % images.length + images.length) % images.length
     el.scrollTo({ left: next * el.clientWidth, behavior: "smooth" })
+  }
+
+  function openZoom(i: number) {
+    setZoomIdx(i)
+  }
+
+  function closeZoom() {
+    // 关闭时把轮播滚回用户最后查看的那张,保证体验一致
+    if (zoomIdx !== null) {
+      const el = scrollRef.current
+      if (el) {
+        el.scrollTo({ left: zoomIdx * el.clientWidth })
+        setIdx(zoomIdx)
+      }
+    }
+    setZoomIdx(null)
   }
 
   return (
@@ -361,9 +401,12 @@ function ImageCarousel({
           style={{ scrollbarWidth: "none" }}
         >
           {images.map((img, i) => (
-            <div
+            <button
               key={img.id}
-              className="snap-center shrink-0 w-full aspect-video relative bg-black/5"
+              type="button"
+              onClick={() => openZoom(i)}
+              aria-label={`查看大图 ${i + 1} / ${images.length}`}
+              className="snap-center shrink-0 w-full aspect-video relative bg-black/5 p-0 border-0 cursor-zoom-in block group"
             >
               <Image
                 src={img.path}
@@ -374,7 +417,11 @@ function ImageCarousel({
                 unoptimized
                 priority={i === 0}
               />
-            </div>
+              {/* 悬停时右下角放大镜 hint */}
+              <span className="absolute bottom-2 right-2 size-7 rounded-full bg-black/50 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                <ZoomIn className="size-3.5" />
+              </span>
+            </button>
           ))}
         </div>
         {images.length > 1 && (
@@ -382,10 +429,7 @@ function ImageCarousel({
             <Button
               variant="outline"
               size="icon-sm"
-              className={cn(
-                "absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80",
-                idx === 0 && "opacity-0 pointer-events-none"
-              )}
+              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80"
               onClick={() => go(-1)}
               aria-label="上一张"
             >
@@ -394,10 +438,7 @@ function ImageCarousel({
             <Button
               variant="outline"
               size="icon-sm"
-              className={cn(
-                "absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80",
-                idx === images.length - 1 && "opacity-0 pointer-events-none"
-              )}
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-background/80"
               onClick={() => go(1)}
               aria-label="下一张"
             >
@@ -419,6 +460,299 @@ function ImageCarousel({
           ))}
         </div>
       )}
+
+      {/* 全屏放大查看 */}
+      <Dialog
+        open={zoomIdx !== null}
+        onOpenChange={(o) => !o && closeZoom()}
+      >
+        <DialogContent
+          showCloseButton={false}
+          className="fixed inset-0 w-screen h-screen max-w-none sm:max-w-none max-h-none p-0 bg-black border-0 ring-0 rounded-none top-0 left-0 translate-x-0 translate-y-0 gap-0 text-white overflow-hidden data-[state=open]:sm:max-w-none"
+        >
+          {zoomIdx !== null && (
+            <ZoomView
+              images={images}
+              idx={zoomIdx}
+              alt={alt}
+              onClose={closeZoom}
+              onPrev={() =>
+                setZoomIdx((i) =>
+                  i === null ? null : (i - 1 + images.length) % images.length
+                )
+              }
+              onNext={() =>
+                setZoomIdx((i) =>
+                  i === null ? null : (i + 1) % images.length
+                )
+              }
+              onJumpTo={(i) => setZoomIdx(i)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
+
+// ============================================================
+// ZoomView — 全屏看大图：天然像素尺寸 + 滚轮缩放(缩放点跟鼠标) + 拖拽平移
+// 顶栏：计数+名称  ·  缩放%+1:1(居中)  ·  关闭
+// 底部居中：所有图缩略图条(点切图 + 当前高亮)
+// 侧栏：上下张(回环)
+// ============================================================
+function ZoomView({
+  images,
+  idx,
+  alt,
+  onClose,
+  onPrev,
+  onNext,
+  onJumpTo,
+}: {
+  images: { id: number; path: string; sortOrder: number }[]
+  idx: number
+  alt: string
+  onClose: () => void
+  onPrev: () => void
+  onNext: () => void
+  onJumpTo: (i: number) => void
+}) {
+  const img = images[idx]
+  const containerRef = useRef<HTMLDivElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
+  const [scale, setScale] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isDragging, setIsDragging] = useState(false)
+  // 拖拽起点(用 ref 存避免 re-render)
+  const dragRef = useRef<{
+    x: number
+    y: number
+    panX: number
+    panY: number
+    pointerId: number
+  } | null>(null)
+
+  // 切图时重置缩放/平移
+  useEffect(() => {
+    setScale(1)
+    setPan({ x: 0, y: 0 })
+    // 缓存图片 onLoad 可能不冒泡,这里补一刀:下一帧如果 naturalWidth 已经有值就直接 1:1 居中
+    const id = requestAnimationFrame(() => {
+      const el = imgRef.current
+      if (el && el.naturalWidth && el.naturalHeight) {
+        fitTo1to1()
+      }
+    })
+    return () => cancelAnimationFrame(id)
+  }, [idx])
+
+  // 1:1 居中:把图片放到视口正中央(小图也居中,大图也居中露出中间)
+  // 只读稳定 ref + 稳定 setter,无 stale closure,放心从任何地方调
+  function fitTo1to1() {
+    const c = containerRef.current
+    const el = imgRef.current
+    if (!c || !el || !el.naturalWidth || !el.naturalHeight) return
+    setPan({
+      x: (c.clientWidth - el.naturalWidth) / 2,
+      y: (c.clientHeight - el.naturalHeight) / 2,
+    })
+    setScale(1)
+  }
+
+  function onImageLoad() {
+    fitTo1to1()
+  }
+
+  function onWheel(e: React.WheelEvent) {
+    e.preventDefault()
+    const c = containerRef.current
+    if (!c) return
+    const rect = c.getBoundingClientRect()
+    const cx = e.clientX - rect.left
+    const cy = e.clientY - rect.top
+    // 指数缩放:小滚动 = 小变化,大滚动 = 大变化;比线性更自然
+    const factor = Math.exp(-e.deltaY * 0.002)
+    const newScale = Math.max(0.1, Math.min(10, scale * factor))
+    if (newScale === scale) return
+    // 缩放点跟着鼠标:cursor = pan + point * scale
+    //   => newPan = cursor - (cursor - pan) / scale * newScale
+    const newPanX = cx - ((cx - pan.x) / scale) * newScale
+    const newPanY = cy - ((cy - pan.y) / scale) * newScale
+    setScale(newScale)
+    setPan({ x: newPanX, y: newPanY })
+  }
+
+  function onPointerDown(e: React.PointerEvent) {
+    if (e.pointerType === "mouse" && e.button !== 0) return
+    e.preventDefault()
+    const target = e.currentTarget
+    target.setPointerCapture(e.pointerId)
+    dragRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      panX: pan.x,
+      panY: pan.y,
+      pointerId: e.pointerId,
+    }
+    setIsDragging(true)
+  }
+
+  function onPointerMove(e: React.PointerEvent) {
+    if (!dragRef.current || dragRef.current.pointerId !== e.pointerId) return
+    const dx = e.clientX - dragRef.current.x
+    const dy = e.clientY - dragRef.current.y
+    setPan({
+      x: dragRef.current.panX + dx,
+      y: dragRef.current.panY + dy,
+    })
+  }
+
+  function onPointerUp(e: React.PointerEvent) {
+    if (dragRef.current?.pointerId !== e.pointerId) return
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      // already released
+    }
+    dragRef.current = null
+    setIsDragging(false)
+  }
+
+  return (
+    <div className="relative w-full h-full flex flex-col">
+      {/* a11y: 给 screen reader 读,视觉上是顶栏自定义的「1/N 名称」 */}
+      <DialogTitle className="sr-only">
+        {alt}（{idx + 1} / {images.length}）
+      </DialogTitle>
+
+      {/* 顶栏:左 name · 中 缩放%+1:1 · 右 X */}
+      <div className="flex items-center gap-2 px-4 py-3 text-sm shrink-0 z-10">
+        {/* 左:计数 + 名称 */}
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <span className="font-mono tabular-nums text-white/80 shrink-0">
+            {idx + 1} / {images.length}
+          </span>
+          <span className="text-white/60 truncate">{alt}</span>
+        </div>
+
+        {/* 中:缩放% + 1:1 按钮(居中分组) */}
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="font-mono tabular-nums text-white/60 text-sm px-1 min-w-[3rem] text-center">
+            {Math.round(scale * 100)}%
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={fitTo1to1}
+            aria-label="重置到 1:1 实际大小"
+            title="重置缩放 (1:1 实际大小)"
+            className="text-white hover:bg-white/10 hover:text-white"
+          >
+            <RotateCcw className="size-4" />
+          </Button>
+        </div>
+
+        {/* 右:关闭(占满右半边推到最右) */}
+        <div className="flex items-center justify-end flex-1">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClose}
+            aria-label="关闭"
+            className="text-white hover:bg-white/10 hover:text-white"
+          >
+            <X className="size-5" />
+          </Button>
+        </div>
+      </div>
+
+      {/* 图像区域:容器 + 底部缩略图条 + 上下张 */}
+      <div className="relative flex-1 min-h-0">
+        {/* 图容器(滚轮缩放 + 拖拽平移) */}
+        <div
+          ref={containerRef}
+          className={cn(
+            "absolute inset-0 overflow-hidden touch-none select-none",
+            isDragging ? "cursor-grabbing" : "cursor-grab"
+          )}
+          onWheel={onWheel}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={onPointerUp}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            ref={imgRef}
+            src={img.path}
+            alt={`${alt} ${idx + 1}`}
+            onLoad={onImageLoad}
+            draggable={false}
+            className="absolute top-0 left-0 max-w-none"
+            style={{
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+              transformOrigin: "0 0",
+            }}
+          />
+        </div>
+
+        {/* 底部居中缩略图条:点切图 + 当前高亮 */}
+        {images.length > 1 && (
+          <div className="absolute bottom-4 inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-xl bg-black/60 backdrop-blur-sm z-20 max-w-full overflow-x-auto"
+               style={{ scrollbarWidth: "none" }}>
+            {images.map((im, i) => (
+              <button
+                key={im.id}
+                type="button"
+                onClick={() => onJumpTo(i)}
+                aria-label={`查看第 ${i + 1} 张`}
+                aria-current={i === idx ? "true" : undefined}
+                className={cn(
+                  "shrink-0 rounded-md overflow-hidden border-2 border-transparent transition-all",
+                  i === idx
+                    ? "!border-white"
+                    : "opacity-60 hover:opacity-100"
+                )}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={im.path}
+                  alt=""
+                  draggable={false}
+                  className="block size-16 object-cover"
+                />
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 侧栏上下张(回环) */}
+        {images.length > 1 && (
+          <>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onPrev}
+              aria-label="上一张"
+              className="absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 size-10 rounded-full bg-white/10 text-white hover:bg-white/20 hover:text-white"
+            >
+              <ChevronLeft className="size-6" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onNext}
+              aria-label="下一张"
+              className="absolute right-2 sm:right-4 top-1/2 -translate-y-1/2 size-10 rounded-full bg-white/10 text-white hover:bg-white/20 hover:text-white"
+            >
+              <ChevronRight className="size-6" />
+            </Button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// (MiniMap 已移除,改为底部缩略图条)

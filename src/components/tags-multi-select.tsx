@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState, useTransition } from "react"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { Check, ChevronDown, Loader2, Plus, Tag as TagIcon, X } from "lucide-react"
@@ -38,44 +37,37 @@ export function TagsMultiSelect({
   spaceId,
 }: Props) {
   const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState<Set<number>>(() => new Set(value))
   const [query, setQuery] = useState("")
   const [creating, startCreating] = useTransition()
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // 打开时同步外部 value
+  const selectedSet = new Set(value)
+  const count = value.length
+
+  // 打开时清空搜索
   useEffect(() => {
     if (open) {
-      setDraft(new Set(value))
       setQuery("")
       // 自动聚焦搜索框
       setTimeout(() => inputRef.current?.focus(), 0)
     }
-  }, [open, value])
-
-  // 关闭时提交
-  useEffect(() => {
-    if (open) return
-    const sortedDraft = [...draft].sort((a, b) => a - b)
-    const sortedValue = [...value].sort((a, b) => a - b)
-    const same =
-      sortedDraft.length === sortedValue.length &&
-      sortedDraft.every((v, i) => v === sortedValue[i])
-    if (!same) onChange(sortedDraft)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
 
+  // 推 value 给父组件时去重 + 排序
+  function commit(next: number[]) {
+    const uniq = Array.from(new Set(next)).sort((a, b) => a - b)
+    const sameLen = uniq.length === value.length
+    const same = sameLen && uniq.every((v, i) => v === value[i])
+    if (!same) onChange(uniq)
+  }
+
   function toggle(id: number) {
-    setDraft((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
-      return next
-    })
+    if (selectedSet.has(id)) commit(value.filter((v) => v !== id))
+    else commit([...value, id])
   }
 
   function clearAll() {
-    setDraft(new Set())
+    commit([])
   }
 
   const trimmed = query.trim()
@@ -100,11 +92,7 @@ export function TagsMultiSelect({
         return
       }
       if (res.data) {
-        setDraft((prev) => {
-          const next = new Set(prev)
-          next.add(res.data!.id)
-          return next
-        })
+        if (!value.includes(res.data.id)) commit([...value, res.data.id])
         setQuery("")
         toast.success(`已创建标签「${res.data.name}」`)
       }
@@ -124,32 +112,61 @@ export function TagsMultiSelect({
     }
   }
 
-  const count = draft.size
-
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={disabled}
+        <div
+          id="tags-trigger"
+          role="combobox"
+          tabIndex={disabled ? -1 : 0}
+          aria-disabled={disabled}
+          aria-expanded={open}
+          aria-controls="tags-popover"
           className={cn(
-            "w-full justify-between font-normal h-8 px-2.5",
-            count === 0 && "text-muted-foreground"
+            "flex flex-wrap items-center gap-1 min-h-8 w-full rounded-lg border border-input bg-transparent px-2 py-1 text-sm cursor-pointer transition-colors hover:bg-accent/30 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
+            count === 0 && "text-muted-foreground",
+            disabled && "pointer-events-none opacity-50"
           )}
         >
-          <span className="flex items-center gap-1.5 truncate">
-            {count > 0 ? (
-              <>
-                <TagIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate">已选 {count} 个标签</span>
-              </>
-            ) : (
-              <span>{placeholder}</span>
-            )}
-          </span>
-          <ChevronDown className="size-4 shrink-0 opacity-50" />
-        </Button>
+          {count === 0 ? (
+            <span className="px-0.5">{placeholder}</span>
+          ) : (
+            <>
+              <TagIcon className="size-3.5 shrink-0 text-muted-foreground mr-0.5" />
+              {value.map((id) => {
+                const tag = tags.find((t) => t.id === id)
+                if (!tag) return null
+                return (
+                  <span
+                    key={id}
+                    className="inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs leading-none"
+                    style={
+                      tag.color
+                        ? { borderColor: tag.color, color: tag.color }
+                        : undefined
+                    }
+                  >
+                    <span className="truncate max-w-[12ch]">{tag.name}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        e.preventDefault()
+                        commit(value.filter((v) => v !== id))
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      aria-label={`移除标签 ${tag.name}`}
+                      className="size-3.5 -mr-0.5 rounded-full inline-flex items-center justify-center hover:bg-foreground/10"
+                    >
+                      <X className="size-2.5" />
+                    </button>
+                  </span>
+                )
+              })}
+            </>
+          )}
+          <ChevronDown className="size-4 shrink-0 opacity-50 ml-auto" />
+        </div>
       </PopoverTrigger>
       <PopoverContent
         className="p-0 overflow-hidden"
@@ -188,7 +205,7 @@ export function TagsMultiSelect({
           )}
 
           {filtered.map((t) => {
-            const checked = draft.has(t.id)
+            const checked = selectedSet.has(t.id)
             return (
               <button
                 key={t.id}

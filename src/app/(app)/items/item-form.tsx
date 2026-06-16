@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition, type ChangeEvent } from "re
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { DialogFooter } from "@/components/ui/dialog"
 import { DatePicker } from "@/components/ui/date-picker"
@@ -304,9 +305,10 @@ export function ItemForm({
 
       <div className="space-y-1.5">
         <Label htmlFor={`i-${mode}-desc`}>描述</Label>
-        <Input
+        <Textarea
           id={`i-${mode}-desc`}
           name="description"
+          rows={3}
           maxLength={2000}
           defaultValue={item?.description ?? ""}
           disabled={pending}
