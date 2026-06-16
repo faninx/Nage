@@ -1,6 +1,20 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // 启用 standalone 输出:Next.js build 时静态分析所有 import,只把 runtime 实际
+  // 用到的文件 + 依赖拷贝到 .next/standalone/,而不是把整个 node_modules 拖进镜像。
+  // 估算可省 200-300 MB(node_modules ~656MB → ~100-150MB)。
+  output: "standalone",
+  // sharp / better-sqlite3 是原生模块,Next.js 静态分析追踪不到 native binding,
+  // 必须手动声明才会被包含进 standalone 输出,否则启动时报找不到模块。
+  outputFileTracingIncludes: {
+    "/": [
+      "./node_modules/sharp/**/*",
+      "./node_modules/@img/**/*",
+      "./node_modules/better-sqlite3/**/*",
+      "./node_modules/bindings/**/*",
+    ],
+  },
   // Server Action 接收的请求体大小上限。Next.js 默认 1MB,上传图片必超。
   // 跟反代示例的 client_max_body_size 20M 对齐：够单张 10MB 图 + 1~2 张余量。
   // 一次想传更多图就把两边都调大;Nage 应用层 MAX_IMAGE_BYTES(单张 10MB)、

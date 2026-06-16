@@ -55,14 +55,14 @@ curl -I http://127.0.0.1:3000/login   # 期望 200
 
 ## 📋 文档
 
-- [DEPLOY.md](./DEPLOY.md) — 已重写,新增"架反代"章节
-- [docs/examples/](./docs/examples/) — 反代配置示例(Caddy / Nginx / Cloudflare Tunnel)
-- [CHANGELOG.md](./CHANGELOG.md) — 完整变更
+- [DEPLOY.md](../../DEPLOY.md) — 已重写,新增"架反代"章节
+- [docs/examples/](../../docs/examples/) — 反代配置示例(Caddy / Nginx / Cloudflare Tunnel)
+- [CHANGELOG.md](../../CHANGELOG.md) — 完整变更
 
 ## 🛣 下一步
 
 - v1.1:借出归还 / 保质期增强 / PWA
-- 详情见 [PRD.md §10](./PRD.md)
+- 详情见 [PRD.md §10](../../PRD.md)
 
 ## 📄 许可
 

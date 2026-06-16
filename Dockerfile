@@ -5,6 +5,9 @@ FROM node:24-bookworm-slim AS deps
 
 # better-sqlite3 / sharp 在 pnpm install 时会触发原生编译
 # 用 pnpm 11 锁版本，配合 frozen lockfile
+# corepack 默认从 registry.npmjs.org 拉 pnpm 元数据，国内网络经常 timeout，
+# 用 npmmirror.com 替代，corepack 官方支持 COREPACK_NPM_REGISTRY env 覆盖
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
 RUN corepack enable && corepack prepare pnpm@11 --activate
 
 WORKDIR /app
@@ -29,7 +32,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc* ./
 # cache mount：跨 build 复用 pnpm store，避免重下大 binary 包（@esbuild、sharp、geist）
 # 用 npmmirror.com（国内 CDN）替代默认 registry——默认 registry 在构建容器内下载慢到 27 KiB/s，
 # 经常 timeout；npmmirror 实测 2 MB/s
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked     pnpm config set registry https://registry.npmmirror.com/     && pnpm install --frozen-lockfile --prefer-offline
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked     pnpm config set registry https://registry.npmmirror.com     && pnpm install --frozen-lockfile --prefer-offline
 
 # ─── Stage 2: 构建 Next.js 应用 ─────────────────────────────────
 FROM node:24-bookworm-slim AS builder
@@ -37,6 +40,9 @@ FROM node:24-bookworm-slim AS builder
 RUN corepack enable && corepack prepare pnpm@11 --activate
 
 WORKDIR /app
+
+# 同 deps 阶段：让 corepack 走 npmmirror
+ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -48,10 +54,6 @@ ENV SKIP_ENV_VALIDATION=1
 # drizzle 迁移文件由 host 提供，随 image 一起打包
 # runtime 启动时由 instrumentation.ts 调 migrate() 建表
 RUN pnpm build
-
-# 砍掉 devDependencies（typescript/eslint/drizzle-kit/tsx/@types/...）
-# runtime 只需要 better-sqlite3 / sharp / next / jose / bcryptjs 等
-RUN pnpm prune --prod
 
 # ─── Stage 3: 运行时（最小化） ─────────────────────────────────
 FROM node:24-bookworm-slim AS runtime
@@ -80,23 +82,20 @@ RUN groupadd --system --gid 1001 nage \
     && mkdir -p /app/data /app/public/uploads /app/backups \
     && chown -R nage:nage /app
 
-# 复制 production node_modules（builder 阶段已编过 better-sqlite3 / sharp，且 prune 砍了 devDeps）
-COPY --from=builder --chown=nage:nage /app/package.json ./package.json
-COPY --from=builder --chown=nage:nage /app/pnpm-lock.yaml ./pnpm-lock.yaml
-COPY --from=builder --chown=nage:nage /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-COPY --from=builder --chown=nage:nage /app/node_modules ./node_modules
-
-# 复制 .next 构建产物和静态资源
-COPY --from=builder --chown=nage:nage /app/.next ./.next
+# ─── 用 .next/standalone 替代 node_modules + .next + src + next.config.ts ───
+# standalone 是 Next.js 静态分析后输出的最小运行时（自带 server.js + 最小 node_modules +
+# .next/server + package.json）。原 node_modules ~656MB → 这里通常只剩 100-150MB。
+# 原 src / next.config.ts 都被编译进 standalone,不需要再单独 COPY。
+COPY --from=builder --chown=nage:nage /app/.next/standalone ./
+# .next/static 不在 standalone 里（客户端 chunks、CSS、图片等静态资源）
+COPY --from=builder --chown=nage:nage /app/.next/static ./.next/static
+# public/ 也不在 standalone 里
 COPY --from=builder --chown=nage:nage /app/public ./public
-COPY --from=builder --chown=nage:nage /app/next.config.ts ./next.config.ts
-COPY --from=builder --chown=nage:nage /app/src ./src
-COPY --from=builder --chown=nage:nage /app/drizzle.config.ts ./drizzle.config.ts
 
-# 复制备份/恢复脚本
+# 备份/恢复脚本(用户 docker exec 调用,DEPLOY.md 提到)
 COPY --from=builder --chown=nage:nage /app/scripts ./scripts
 
-# 复制 drizzle 迁移（bootstrap 启动时跑 migrate 建表）
+# drizzle 迁移(bootstrap 启动时跑 migrate 建表)
 COPY --from=builder --chown=nage:nage /app/drizzle ./drizzle
 
 ENV NODE_ENV=production
@@ -113,4 +112,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
 
 # tini 作 PID 1，正确转发 SIGTERM 给 next
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["node", "node_modules/next/dist/bin/next", "start"]
+# standalone 入口是 server.js,不再走 next start
+CMD ["node", "server.js"]

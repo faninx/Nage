@@ -23,7 +23,7 @@ docker compose up -d
 
 ## 🆕 新部署
 
-跟 v1.0.1 完全一致，参考 [RELEASE-NOTES-v1.0.1.md](./RELEASE-NOTES-v1.0.1.md) 或 [DEPLOY.md](./DEPLOY.md)。
+跟 v1.0.1 完全一致，参考 [RELEASE-NOTES-v1.0.1.md](./RELEASE-NOTES-v1.0.1.md) 或 [DEPLOY.md](../../DEPLOY.md)。
 
 ## 🐛 修
 

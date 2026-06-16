@@ -25,7 +25,7 @@ cp .env.local.example .env       # 改 ADMIN_PASSWORD / JWT_SECRET
 docker compose up -d --build
 ```
 
-第一次登录用 `.env` 里的管理员账号。详见 [DEPLOY.md](./DEPLOY.md)。
+第一次登录用 `.env` 里的管理员账号。详见 [DEPLOY.md](../../DEPLOY.md)。
 
 ## 🐛 v1.0 收口修复
 
@@ -43,11 +43,11 @@ docker compose up -d --build
 
 ## 📋 文档
 
-- [README.md](./README.md) — 项目介绍 + 快速开始
-- [DEPLOY.md](./DEPLOY.md) — 部署指南（9 项故障 + 8 项安全清单）
-- [PRD.md](./PRD.md) — 产品规范（v1.0/v1.1/v2.0）
-- [CHANGELOG.md](./CHANGELOG.md) — 完整变更历史
-- [CLAUDE.md](./CLAUDE.md) — 协作规范
+- [README.md](../../README.md) — 项目介绍 + 快速开始
+- [DEPLOY.md](../../DEPLOY.md) — 部署指南（9 项故障 + 8 项安全清单）
+- [PRD.md](../../PRD.md) — 产品规范（v1.0/v1.1/v2.0）
+- [CHANGELOG.md](../../CHANGELOG.md) — 完整变更历史
+- [CLAUDE.md](../../CLAUDE.md) — 协作规范
 
 ## 🛣 v1.1 路线图（未做）
 
@@ -59,8 +59,8 @@ docker compose up -d --build
 
 ## 🤝 贡献
 
-PR 模板见 [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md)。
-按 [CLAUDE.md](./CLAUDE.md) 增量开发守则提交。
+PR 模板见 [`.github/PULL_REQUEST_TEMPLATE.md`](../../.github/PULL_REQUEST_TEMPLATE.md)。
+按 [CLAUDE.md](../../CLAUDE.md) 增量开发守则提交。
 
 ## 📄 许可
 

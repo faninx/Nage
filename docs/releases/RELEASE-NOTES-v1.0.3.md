@@ -64,7 +64,7 @@ docker compose up -d
 
 ## 🆕 新部署
 
-跟 v1.0.2 完全一致，参考 [RELEASE-NOTES-v1.0.2.md](./RELEASE-NOTES-v1.0.2.md) 或 [DEPLOY.md](./DEPLOY.md)。**没有任何配置层面变化**——这一版就是 next.config.ts 加一行 + 三份反代示例各加一段注释。
+跟 v1.0.2 完全一致，参考 [RELEASE-NOTES-v1.0.2.md](./RELEASE-NOTES-v1.0.2.md) 或 [DEPLOY.md](../../DEPLOY.md)。**没有任何配置层面变化**——这一版就是 next.config.ts 加一行 + 三份反代示例各加一段注释。
 
 ## ✨ 没变
 

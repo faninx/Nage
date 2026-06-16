@@ -5,6 +5,34 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.1] - 2026-06-16
+
+### 变更（Docker 镜像瘦身）
+
+- **`output: "standalone"` 模式**:`next.config.ts` 加 `output: "standalone"` + `outputFileTracingIncludes`（sharp / better-sqlite3 / @img / bindings 4 个 native module），Docker 镜像从 ~650MB 降到 **510MB**（-22%）。runtime 不再带完整 `node_modules` + `.next` + `src`，改用 Next.js 静态分析后的最小集 `.next/standalone`（~106MB），外加 `.next/static` / `public` / `scripts` / `drizzle`
+- **Dockerfile 调整**:
+  - builder 阶段去掉 `pnpm prune --prod`（standalone 自带最小集）
+  - runtime 阶段 `COPY --from=builder /app/.next/standalone ./` + 单独拷 `.next/static` `public` `scripts` `drizzle`
+  - `CMD ["node", "server.js"]`（standalone 入口不再是 `next start`）
+- **corepack 走 npmmirror**:corepack 默认从 `registry.npmjs.org` 拉 pnpm 元数据，国内网络经常 timeout。加 `ENV COREPACK_NPM_REGISTRY=https://registry.npmmirror.com` 到 deps + builder 阶段。国外 CI 仍走默认 npmjs.org 也没副作用
+- **遗留文档修正**:`docs/releases/RELEASE-NOTES-v1.0.{0,1,2,3,4}.md` 内的相对路径从 `./` 改成 `../../`（v1.1.0 移到 `docs/releases/` 时漏改，链接全断）
+
+### 升级指引
+
+不需要任何数据迁移 —— 跟 v1.1.0 一样的步骤。
+
+```bash
+cd /opt/nage
+git pull
+git checkout v1.1.1
+docker compose build app
+docker compose up -d
+```
+
+启动时 `bootstrap` 不会跑任何新迁移（v1.1.0 的 `0003_flimsy_orphan` 已跑过）。
+
+如果是 ghcr.io 镜像用户，编辑 `docker-compose.yml` 把 image 改成 `:1.1.1`，然后 `docker compose pull && docker compose up -d`。
+
 ## [1.1.0] - 2026-06-15
 
 ### 新增（M7 — 多用户/多空间协作）

@@ -63,7 +63,7 @@ docker compose up -d
 
 ## 🆕 新部署
 
-跟 v1.0.3 完全一致，参考 [RELEASE-NOTES-v1.0.3.md](./RELEASE-NOTES-v1.0.3.md) 或 [DEPLOY.md](./DEPLOY.md)。没有任何配置层面变化。
+跟 v1.0.3 完全一致，参考 [RELEASE-NOTES-v1.0.3.md](./RELEASE-NOTES-v1.0.3.md) 或 [DEPLOY.md](../../DEPLOY.md)。没有任何配置层面变化。
 
 ## ✨ 没变
 
