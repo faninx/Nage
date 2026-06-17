@@ -5,6 +5,38 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.2.1] - 2026-06-17
+
+移动端 UX 修复 + 位置拖动 buildTree 渲染 bug。**0 数据库 schema 变化，0 数据迁移**。
+
+### 修复
+
+- **位置拖动后 UI 关系错乱（critical）**:`buildTree` 假设 DB fetch 顺序里父节点一定先于子节点。拖动后子节点被服务端分配 `sortOrder=(i+1)*10=10`,父作为根自己通常 `sortOrder≥20`,`ORDER BY sortOrder,id` 把子排在父前 → `buildTree` 遍历子时父还没进 map → 子被当孤儿挂根。`buildTree` 改递归 `visit()` + `visited` set,保证父先处理,迭代顺序不变。**DB 端从来没出错,纯粹是渲染 bug**——v1.2.0 拖过位置的实例升级后刷新就显示正确的关系
+- **移动端位置列表无法拖动**:iOS Safari / Android Chrome 不响应 HTML5 `draggable` 元素的 touch 事件(浏览器历史问题,不是代码 bug)。自实现 `touchstart` / `touchmove` / `touchend` 拖动,复用桌面端 before/after/child 视觉和 `reorderLocationAction`。`addEventListener` + `{passive: false}` 全局注册绕过 React 默认 `passive: true`。`performDropRef` 绕开闭包陷阱。`(pointer:coarse)` 媒体查询在移动端关掉 `draggable` 避免 iOS 长按弹"拖图副本"冲突。`touchend` 用 `changedTouches[0]` + `flushSync` 补一次 hit-test 防最后一次 touchmove 漂移
+- **移动端列表操作按钮看不见**:物品 / 位置 / 分类 / 标签列表的操作 Icon 只在 PC 端 `group-hover` 才显示,移动端没 hover 所以看不见。Tailwind 类改 `opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100`,移动端常显、PC 端保持 hover
+- **弹窗按钮文案与标题动词不对齐**:标题"新建位置"按钮叫"创建"、标题"快速添加物品"按钮叫"录入"。`<ItemForm>` 加可选 `submitLabel?` prop,调用方传"新建" / "新增" / "添加" / "保存"对齐标题动词
+- **移动端 Emoji 下拉无法滚动**:编辑分类点 Emoji 按钮,下拉网格在移动端无法上下滚动。网格容器加 `touch-pan-y` + `overscroll-contain` + `onTouchMove stopPropagation`,`PopoverContent` 加 `max-w-[calc(100vw-2rem)]` 防止溢出。高度保持 `max-h-72`,`touch-pan-y` 才是关键
+- **README GitHub Release badge 404**:badge URL 用了大写 `faninx/Nage`,shields.io 走 GitHub API 大小写敏感 404。改 `faninx/nage`(项目实际仓库名是小写,跟 package.json / Docker 镜像名一致)
+
+### 文档
+
+- `docs/releases/RELEASE-NOTES-v1.2.1.md` 完整发布说明(根因分析 + 技术决策 + 验证步骤)
+- `CLAUDE.md` 状态行更新 v1.2.1 已发
+
+### 升级指引
+
+```bash
+cd /opt/nage
+git pull
+git checkout v1.2.1
+docker compose build app
+docker compose up -d
+```
+
+启动时 `bootstrap` 不会跑任何新迁移(v1.1.0 的 9 张表已建好)。**如果你之前在 v1.2.0 拖动过位置**——DB 里的 `parentId` / `sortOrder` 其实都是对的,UI 渲染错乱是 buildTree bug,升级后刷新页面会显示正确的关系树。
+
+如果是 ghcr.io 镜像用户,编辑 `docker-compose.yml` 把 image 改成 `:1.2.1`,然后 `docker compose pull && docker compose up -d`。
+
 ## [1.2.0] - 2026-06-17
 
 ### 新增（详情页图片全屏查看）

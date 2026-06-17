@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 英文名：**Nage**
 - 包名 / 数据库名 / 目录：`nage`（小写）
 
-**v1.0 MVP 全部完成**（M1–M5：鉴权 / 空间/位置/分类/标签/成员 CRUD / 物品 CRUD / 仪表盘 / 二维码 / 导入导出 / Docker 部署）。**v1.1.0 已发**（M7 多用户/多空间协作）。**v1.1.1 已发**（Docker 镜像瘦身，650MB → 510MB）。**v1.2.0 已发**（详情页图片点击放大 + 标签内联显示 + 描述 Textarea）。下一步：v1.3 计划（F13 借出归还 / F14 保质期增强收口 / F16 PWA / F18 i18n）。
+**v1.0 MVP 全部完成**（M1–M5：鉴权 / 空间/位置/分类/标签/成员 CRUD / 物品 CRUD / 仪表盘 / 二维码 / 导入导出 / Docker 部署）。**v1.1.0 已发**（M7 多用户/多空间协作）。**v1.1.1 已发**（Docker 镜像瘦身，650MB → 510MB）。**v1.2.0 已发**（详情页图片点击放大 + 标签内联显示 + 描述 Textarea）。**v1.2.1 已发**（移动端 UX 修复 + 位置拖动 buildTree 渲染顺序 bug）。下一步：v1.3 计划（F13 借出归还 / F14 保质期增强收口 / F16 PWA / F18 i18n）。
 
 修改代码前务必先读 `PRD.md`（唯一事实源），它定义了：
 - 完整功能清单（v1.0 MVP / v1.1 增强 / v2.0 远期）
