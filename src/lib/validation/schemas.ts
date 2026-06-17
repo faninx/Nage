@@ -233,7 +233,7 @@ const optionalPrice = z.preprocess(
 export const CreateItemSchema = z.object({
   spaceId: z.coerce.number().int().positive(),
   name,
-  description: z.string().max(2000).optional().or(z.literal("")),
+  description: z.string().max(5000).optional().or(z.literal("")),
   categoryId: optionalNullableInt,
   locationId: optionalNullableInt,
   quantity: z.coerce.number().int().min(1, "数量至少 1").default(1),
@@ -246,7 +246,7 @@ export const CreateItemSchema = z.object({
 export const UpdateItemSchema = z.object({
   id: z.coerce.number().int().positive(),
   name,
-  description: z.string().max(2000).optional().or(z.literal("")),
+  description: z.string().max(5000).optional().or(z.literal("")),
   categoryId: optionalNullableInt,
   locationId: optionalNullableInt,
   quantity: z.coerce.number().int().min(1, "数量至少 1"),

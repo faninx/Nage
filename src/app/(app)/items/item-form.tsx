@@ -312,7 +312,7 @@ export function ItemForm({
           id={`i-${mode}-desc`}
           name="description"
           rows={3}
-          maxLength={2000}
+          maxLength={5000}
           defaultValue={item?.description ?? ""}
           disabled={pending}
         />
