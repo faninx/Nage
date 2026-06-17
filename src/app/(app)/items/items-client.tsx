@@ -555,7 +555,7 @@ function ItemRowList({
                 )}
               </div>
             </Link>
-            <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+            <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -674,7 +674,7 @@ function ItemCardGrid({
                 )}
               </div>
             </Link>
-            <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+            <div className="absolute top-2 right-2 flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
               <Button
                 variant="secondary"
                 size="icon-sm"
@@ -954,6 +954,7 @@ export function ItemsClient({
                 initialImages={[]}
                 formAction={createFormAction}
                 pending={createPending}
+                submitLabel="添加"
               />
             </DialogContent>
           </Dialog>

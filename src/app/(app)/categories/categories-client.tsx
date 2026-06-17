@@ -140,7 +140,7 @@ export function CategoriesClient({ spaceId, initial }: Props) {
               </div>
               <DialogFooter showCloseButton>
                 <Button type="submit" disabled={createPending}>
-                  {createPending ? "保存中…" : "创建"}
+                  {createPending ? "保存中…" : "新建"}
                 </Button>
               </DialogFooter>
             </form>
@@ -167,7 +167,7 @@ export function CategoriesClient({ spaceId, initial }: Props) {
               >
                 {c.name}
               </Link>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+              <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
                 <Button
                   variant="ghost"
                   size="icon-sm"

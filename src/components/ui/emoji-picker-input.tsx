@@ -1124,7 +1124,7 @@ export function EmojiPickerInput({
           </button>
         </PopoverTrigger>
         <PopoverContent
-          className="w-[26rem] p-0 overflow-hidden"
+          className="w-[26rem] max-w-[calc(100vw-2rem)] p-0 overflow-hidden"
           align="start"
           sideOffset={6}
         >
@@ -1175,11 +1175,15 @@ export function EmojiPickerInput({
             })}
           </div>
 
-          {/* 当前分类 emoji 网格（8 列大 emoji，可滚动） */}
+          {/* 当前分类 emoji 网格（8 列大 emoji，可滚动）
+              max-h-72 (288px)：之前试过 max-h-[60vh]，移动端会把底部导航 Tab 也遮住
+              overscroll-contain + touch-pan-y 防止滚动穿透到外层 dialog/page
+              onTouchMove stopPropagation 避免冒泡触发 Radix Popover 的关闭逻辑 */}
           <div
-            className="p-2 max-h-72 overflow-y-auto"
+            className="p-2 max-h-72 overflow-y-auto overscroll-contain touch-pan-y"
             key={query ? "search" : activeKey}
             onWheel={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
           >
             <div className="px-1.5 pb-1.5 text-xs font-medium text-muted-foreground sticky top-0 bg-popover">
               {filteredEmojis.label}

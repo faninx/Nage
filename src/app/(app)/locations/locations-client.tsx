@@ -1,6 +1,7 @@
 "use client"
 
-import { useActionState, useEffect, useMemo, useState, useTransition } from "react"
+import { useActionState, useEffect, useMemo, useRef, useState, useTransition } from "react"
+import { flushSync } from "react-dom"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -59,15 +60,30 @@ function buildTree(list: LocationWithCount[]): Node[] {
   const map = new Map<number, Node>()
   for (const l of list) map.set(l.id, { ...l, children: [], depth: 0 })
   const roots: Node[] = []
-  for (const l of list) {
-    const node = map.get(l.id)!
-    if (l.parentId && map.has(l.parentId)) {
-      const parent = map.get(l.parentId)!
+  // 关键：DB fetch 顺序是 sortOrder+id，但重排序后被拖位置（成为子位置）的 sortOrder
+  // 可能比新父节点更小（举例：父 root sortOrder=20，子节点新 sortOrder=10）→ 子先到。
+  // 原版按 list 顺序遍历，假设父先出现——子先到时 map.get(parent) 返回 undefined，
+  // 子节点被当成孤儿挂到根，看起来就像"拖动后其他位置的关系变了"（DB 里其实是对的，
+  // 是 UI 渲染错了）。递归 visit + visited set 保证父节点先处理，
+  // 迭代顺序仍按 list，flatten 中子节点出现顺序由 sortOrder 决定。
+  const visited = new Set<number>()
+  function visit(node: Node): void {
+    if (visited.has(node.id)) return
+    visited.add(node.id)
+    const parentId = node.parentId
+    if (parentId == null || !map.has(parentId)) {
+      // 父不在本空间/不存在 → 当作根
+      roots.push(node)
+      node.depth = 0
+    } else {
+      const parent = map.get(parentId)!
+      visit(parent)
       node.depth = parent.depth + 1
       parent.children.push(node)
-    } else {
-      roots.push(node)
     }
+  }
+  for (const l of list) {
+    visit(map.get(l.id)!)
   }
   return roots
 }
@@ -216,6 +232,22 @@ export function LocationsClient({ spaceId, initial }: Props) {
   const [dropIntoRoot, setDropIntoRoot] = useState(false)
   const [, startReorder] = useTransition()
 
+  // 触摸拖动：HTML5 drag 在移动端不工作（iOS Safari / Android Chrome 默认不响应
+  // draggable 元素的 touch），需用 touch 事件自己实现同一套 before/after/child 逻辑
+  const touchRef = useRef<{ id: number; x: number; y: number; activated: boolean } | null>(null)
+  // performDrop 闭包引用：触摸端在 useEffect(空依赖) 注册的全局监听里调用 performDrop，
+  // 直接引用会拿到首次 render 的闭包（draggingId 还是 null）；用 ref 始终指向最新版本
+  const performDropRef = useRef<(() => void) | null>(null)
+  // 粗指针设备（手机/平板）：关掉 HTML5 drag，避免 iOS 长按触发"拖图副本"和我们的 touch 冲突
+  const [isCoarsePointer, setIsCoarsePointer] = useState(false)
+  useEffect(() => {
+    const mql = window.matchMedia("(pointer: coarse)")
+    setIsCoarsePointer(mql.matches)
+    const handler = (e: MediaQueryListEvent) => setIsCoarsePointer(e.matches)
+    mql.addEventListener("change", handler)
+    return () => mql.removeEventListener("change", handler)
+  }, [])
+
   function onDragStart(e: React.DragEvent<HTMLLIElement>, id: number) {
     setDraggingId(id)
     setDropTarget(null)
@@ -241,9 +273,10 @@ export function LocationsClient({ spaceId, initial }: Props) {
     const rect = e.currentTarget.getBoundingClientRect()
     const y = e.clientY - rect.top
     const h = rect.height
+    // 25 / 50 / 25：和移动端 touch 一致；中段宽一点，移动端手指也能精准命中
     let pos: "before" | "after" | "child"
-    if (y < h / 3) pos = "before"
-    else if (y > (h * 2) / 3) pos = "after"
+    if (y < h / 4) pos = "before"
+    else if (y > (h * 3) / 4) pos = "after"
     else pos = "child"
     setDropTarget({ id: node.id, pos })
   }
@@ -355,6 +388,128 @@ export function LocationsClient({ spaceId, initial }: Props) {
     })
   }
 
+  // 触摸拖动：onTouchStart 只记录起点；真正的拖拽逻辑在全局 touchmove/touchend 监听里
+  function onTouchStart(e: React.TouchEvent<HTMLLIElement>, id: number) {
+    if (e.touches.length !== 1) return
+    const t = e.touches[0]
+    touchRef.current = { id, x: t.clientX, y: t.clientY, activated: false }
+  }
+
+  // 让 performDropRef 始终指向最新 performDrop（每次 render 后同步）
+  useEffect(() => {
+    performDropRef.current = performDrop
+  })
+
+  // 全局 touchmove / touchend：用 addEventListener + { passive: false } 才能 preventDefault
+  // （React 的合成事件默认 passive，preventDefault 无效）；用空依赖挂一次，闭包走 ref 拿最新值
+  useEffect(() => {
+    function computePosFromY(rect: DOMRect, clientY: number): "before" | "after" | "child" {
+      const y = clientY - rect.top
+      const h = rect.height
+      // 25 / 50 / 25：移动端中段给宽一点（手指接触面 ~12-15px，原 1/3 命中区几乎一样大），桌面也同步用这套保持一致
+      if (y < h / 4) return "before"
+      if (y > (h * 3) / 4) return "after"
+      return "child"
+    }
+
+    function onTouchMove(e: TouchEvent) {
+      const touch = touchRef.current
+      if (!touch || e.touches.length !== 1) return
+      const t = e.touches[0]
+      // 移动 < 12px 不算 drag（避免和竖向滚动冲突；8px 在移动端太容易被浏览器抢判定为滚动）
+      if (!touch.activated) {
+        const dx = t.clientX - touch.x
+        const dy = t.clientY - touch.y
+        if (Math.hypot(dx, dy) < 12) return
+        touch.activated = true
+        setDraggingId(touch.id)
+        setDropTarget(null)
+        setDropIntoRoot(false)
+      }
+      e.preventDefault() // 阻止页面随手指滚动
+      // 命中测试：找当前 touch 位置下的 li
+      const target = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null
+      const li = target?.closest("[data-loc-id]") as HTMLElement | null
+      if (li && Number(li.dataset.locId) !== touch.id) {
+        const id = Number(li.dataset.locId)
+        const rect = li.getBoundingClientRect()
+        const pos = computePosFromY(rect, t.clientY)
+        setDropTarget({ id, pos })
+        setDropIntoRoot(false)
+      } else {
+        // 检查是否在根级落点区（移动端手指不在任何 li 上时也可能是要 drop 到根）
+        const rootZone = document.querySelector("[data-root-zone]") as HTMLElement | null
+        const inRoot = !!rootZone && (() => {
+          const r = rootZone.getBoundingClientRect()
+          return t.clientY >= r.top && t.clientY <= r.bottom
+        })()
+        if (inRoot) {
+          setDropIntoRoot(true)
+          setDropTarget(null)
+        } else {
+          setDropTarget(null)
+          setDropIntoRoot(false)
+        }
+      }
+    }
+    function onTouchEnd(e: TouchEvent) {
+      const touch = touchRef.current
+      touchRef.current = null
+      if (!touch?.activated) {
+        // 没拖动就当一次普通点击（让 Link / Button 的 onClick 正常触发）
+        setDraggingId(null)
+        setDropTarget(null)
+        setDropIntoRoot(false)
+        return
+      }
+      e.preventDefault() // 阻止后续的 click 触发 Link 跳转
+
+      // 最终命中测试：用 changedTouches 拿到手指抬起时的精确位置
+      // （最后一次 touchmove 可能已经过去几帧，手指位置 ≠ 上次 setState 的值）
+      let finalDropTarget: typeof dropTarget = null
+      let finalDropIntoRoot = false
+      const t = e.changedTouches[0]
+      if (t) {
+        const target = document.elementFromPoint(t.clientX, t.clientY) as HTMLElement | null
+        const li = target?.closest("[data-loc-id]") as HTMLElement | null
+        if (li && Number(li.dataset.locId) !== touch.id) {
+          const id = Number(li.dataset.locId)
+          const rect = li.getBoundingClientRect()
+          finalDropTarget = { id, pos: computePosFromY(rect, t.clientY) }
+        } else {
+          const rootZone = document.querySelector("[data-root-zone]") as HTMLElement | null
+          if (rootZone) {
+            const r = rootZone.getBoundingClientRect()
+            if (t.clientY >= r.top && t.clientY <= r.bottom) finalDropIntoRoot = true
+          }
+        }
+      }
+
+      // flushSync：touchend 是在 React 事件体系外的全局监听器里跑的，
+      // setState 默认是异步批处理；performDrop 必须读到 finalDropTarget/dropIntoRoot，
+      // 用 flushSync 强制同步提交 state，performDrop 才不会拿到上一次的旧值
+      flushSync(() => {
+        setDraggingId(touch.id)
+        setDropTarget(finalDropTarget)
+        setDropIntoRoot(finalDropIntoRoot)
+      })
+
+      performDropRef.current?.()
+      // 重置视觉状态必须在 performDrop 之后
+      setDraggingId(null)
+      setDropTarget(null)
+      setDropIntoRoot(false)
+    }
+    document.addEventListener("touchmove", onTouchMove, { passive: false })
+    document.addEventListener("touchend", onTouchEnd, { passive: false })
+    document.addEventListener("touchcancel", onTouchEnd, { passive: false })
+    return () => {
+      document.removeEventListener("touchmove", onTouchMove)
+      document.removeEventListener("touchend", onTouchEnd)
+      document.removeEventListener("touchcancel", onTouchEnd)
+    }
+  }, [])
+
   function openCreate(parentId: number | null) {
     setCreateParentId(parentId)
     setCreateOpen(true)
@@ -425,13 +580,15 @@ export function LocationsClient({ spaceId, initial }: Props) {
         </p>
       ) : (
         <>
-          {/* 根级落点区：拖到列表最上方空白处 → 移到根级末尾 */}
+          {/* 根级落点区：拖到列表最上方空白处 → 移到根级末尾
+              h-8(32px) 移动端，h-2(8px) 桌面端——移动端 8px 几乎点不到 */}
           <div
+            data-root-zone
             onDragOver={onRootZoneDragOver}
             onDragLeave={onRootZoneDragLeave}
             onDrop={onRootZoneDrop}
             className={cn(
-              "h-2 rounded-lg border border-dashed transition-colors",
+              "h-8 md:h-2 rounded-lg border border-dashed transition-colors",
               dropIntoRoot
                 ? "border-primary bg-primary/10"
                 : "border-transparent"
@@ -446,14 +603,16 @@ export function LocationsClient({ spaceId, initial }: Props) {
               return (
                 <li
                   key={node.id}
-                  draggable
+                  data-loc-id={node.id}
+                  draggable={!isCoarsePointer}
                   onDragStart={(e) => onDragStart(e, node.id)}
                   onDragEnd={onDragEnd}
                   onDragOver={(e) => onRowDragOver(e, node)}
                   onDragLeave={onRowDragLeave}
                   onDrop={onRowDrop}
+                  onTouchStart={(e) => onTouchStart(e, node.id)}
                   className={cn(
-                    "group relative flex items-center gap-1 px-2 py-1.5 transition-colors hover:bg-muted/40",
+                    "group relative flex items-center gap-1 px-2 py-1.5 transition-colors hover:bg-muted/40 select-none touch-callout-none",
                     isDragging && "opacity-40"
                   )}
                   style={{ paddingLeft: 8 + node.depth * 20 }}
@@ -498,7 +657,7 @@ export function LocationsClient({ spaceId, initial }: Props) {
                       </div>
                     )}
                   </Link>
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -600,7 +759,7 @@ export function LocationsClient({ spaceId, initial }: Props) {
             </div>
             <DialogFooter showCloseButton>
               <Button type="submit" disabled={createPending}>
-                {createPending ? "保存中…" : "创建"}
+                {createPending ? "保存中…" : "新建"}
               </Button>
             </DialogFooter>
           </form>

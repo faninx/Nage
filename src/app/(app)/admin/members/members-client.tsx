@@ -183,7 +183,7 @@ export function MembersClient({ currentUserId, initial }: Props) {
               </div>
               <DialogFooter showCloseButton>
                 <Button type="submit" disabled={createPending}>
-                  {createPending ? "保存中…" : "创建"}
+                  {createPending ? "保存中…" : "新增"}
                 </Button>
               </DialogFooter>
             </form>

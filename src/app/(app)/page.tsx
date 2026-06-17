@@ -210,7 +210,7 @@ export default async function DashboardPage() {
           <CardHeader>
             <CardTitle className="text-base">开始使用</CardTitle>
             <CardDescription>
-              建议先建位置和分类，然后用右下角「+」快速录入物品。
+              建议先建位置和分类，然后用右下角「+」快速添加物品。
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">

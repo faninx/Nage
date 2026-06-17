@@ -1,6 +1,6 @@
 # 纳格（Nage）
 
-[![GitHub release](https://img.shields.io/github/v/release/faninx/Nage)](https://github.com/faninx/Nage/releases/latest)
+[![GitHub release](https://img.shields.io/github/v/release/faninx/nage)](https://github.com/faninx/nage/releases/latest)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](./LICENSE)
 [![Docker image](https://img.shields.io/badge/docker-nage:1.0.0-blue)](https://hub.docker.com/r/faninx/nage)
 

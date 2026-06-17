@@ -145,7 +145,7 @@ export function TagsClient({ spaceId, initial }: Props) {
               </div>
               <DialogFooter showCloseButton>
                 <Button type="submit" disabled={createPending}>
-                  {createPending ? "保存中…" : "创建"}
+                  {createPending ? "保存中…" : "新建"}
                 </Button>
               </DialogFooter>
             </form>

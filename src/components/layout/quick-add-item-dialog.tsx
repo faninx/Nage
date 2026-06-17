@@ -28,7 +28,7 @@ type Props = {
   locations: QuickAddLoc[]
 }
 
-/** 全局快速录入：仅名称必填，位置可选；图片/分类/标签去详情页补 */
+/** 全局快速添加：仅名称必填，位置可选；图片/分类/标签去详情页补 */
 export function QuickAddItemDialog({ open, onOpenChange, spaceId, locations }: Props) {
   const router = useRouter()
   const [state, formAction, pending] = useActionState<
@@ -54,7 +54,7 @@ export function QuickAddItemDialog({ open, onOpenChange, spaceId, locations }: P
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>快速录入物品</DialogTitle>
+          <DialogTitle>快速添加物品</DialogTitle>
           <DialogDescription>只填名称就够了，图片和分类去详情页补</DialogDescription>
         </DialogHeader>
         <form action={formAction} className="space-y-3">
@@ -136,7 +136,7 @@ export function QuickAddItemDialog({ open, onOpenChange, spaceId, locations }: P
 
           <DialogFooter showCloseButton>
             <Button type="submit" disabled={pending}>
-              {pending ? "保存中…" : "保存"}
+              {pending ? "保存中…" : "添加"}
             </Button>
           </DialogFooter>
         </form>

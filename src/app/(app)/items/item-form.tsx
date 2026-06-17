@@ -264,6 +264,7 @@ export function ItemForm({
   tags,
   formAction,
   pending,
+  submitLabel,
 }: {
   mode: "create" | "edit"
   spaceId: number
@@ -275,6 +276,8 @@ export function ItemForm({
   tags: TagOpt[]
   formAction: (data: FormData) => void
   pending: boolean
+  /** 覆盖默认按钮文案(create 默认"创建",edit 默认"保存");通常跟 DialogTitle 动词对齐 */
+  submitLabel?: string
 }) {
   const [cat, setCat] = useState<string>(
     item?.categoryId ? String(item.categoryId) : ITEM_FORM_UNSET
@@ -428,7 +431,7 @@ export function ItemForm({
 
       <DialogFooter showCloseButton>
         <Button type="submit" disabled={pending}>
-          {pending ? "保存中…" : mode === "create" ? "创建" : "保存"}
+          {pending ? "保存中…" : submitLabel ?? (mode === "create" ? "创建" : "保存")}
         </Button>
       </DialogFooter>
     </form>
