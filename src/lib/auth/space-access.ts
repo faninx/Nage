@@ -9,6 +9,7 @@ import {
   spaceRoleAtLeast,
 } from "@/lib/db/schema"
 import { defaultSpaceName } from "@/lib/actions/types"
+import { seedSpaceDefaults } from "@/lib/db/seed-space-defaults"
 
 /**
  * 空间级 ACL 服务。
@@ -130,7 +131,7 @@ export async function ensureDefaultSpace(user: {
     return id
   }
 
-  // 不存在 → insert + 写 member(owner)
+  // 不存在 → insert + 写 member(owner) + 种入通用位置/分类
   const [created] = await db
     .insert(spaces)
     .values({ name, ownerId: user.id })
@@ -140,6 +141,7 @@ export async function ensureDefaultSpace(user: {
     userId: user.id,
     role: "owner",
   })
+  await seedSpaceDefaults(created.id)
   await setCurrentSpaceId(user.id, created.id)
   return created.id
 }

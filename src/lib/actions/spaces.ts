@@ -12,6 +12,7 @@ import {
 } from "@/lib/validation/schemas"
 import { hasSpaceAccess } from "@/lib/auth/space-access"
 import { revalidateMySpaces } from "./_cache"
+import { seedSpaceDefaults } from "@/lib/db/seed-space-defaults"
 import { type ActionState } from "./types"
 
 export async function createSpaceAction(
@@ -45,6 +46,8 @@ export async function createSpaceAction(
     userId: user.id,
     role: "owner",
   })
+  // 新空间种入通用位置和分类
+  await seedSpaceDefaults(created.id)
   // 自动切到新空间
   await db.update(users).set({ lastSpaceId: created.id }).where(eq(users.id, user.id))
   revalidateMySpaces()
