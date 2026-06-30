@@ -32,10 +32,9 @@ async function userAccessToItemEdit(
   return hasSpaceAccess(userId, row.spaceId, "editor")
 }
 
-/** 把单张图保存到 public/uploads/items/{itemId}/{idx}.jpg。返回相对路径 `/uploads/items/...` 与字节数。 */
+/** 把单张图保存到 public/uploads/items/{itemId}/{timestamp}-{rand}.jpg。返回相对路径 `/uploads/items/...` 与字节数。 */
 async function saveItemImage(
   itemId: number,
-  idx: number,
   file: File
 ): Promise<{ path: string; bytes: number }> {
   if (file.size > MAX_IMAGE_BYTES) {
@@ -46,7 +45,10 @@ async function saveItemImage(
   const absDir = path.join(process.cwd(), "public", relDir)
   await mkdir(absDir, { recursive: true })
 
-  const filename = `${idx}.jpg`
+  // filename 完全跟 sortOrder 解耦，用 timestamp + random 避免跟任何现有 path 冲突
+  // (之前用 ${idx}.jpg 在 sortOrder 重排 + 删图后, nextIdx 可能跟已有 row.path 冲突,
+  // writeFile 直接覆盖别人的图 —— v1.2.2 实测导致 "上传一张新图, 别人的图也被替换" bug)
+  const filename = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`
   const absPath = path.join(absDir, filename)
   const relPath = "/" + path.posix.join(relDir, filename).replace(/\\/g, "/")
 
@@ -102,7 +104,7 @@ export async function uploadItemImages(
   let nextIdx = (maxRow?.m ?? -1) + 1
 
   for (const file of files) {
-    const saved = await saveItemImage(itemId, nextIdx, file)
+    const saved = await saveItemImage(itemId, file)
     await db.insert(itemImages).values({
       itemId,
       path: saved.path,
