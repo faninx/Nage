@@ -814,7 +814,11 @@ export function ItemsClient({
     if (createState?.ok) {
       setCreateOpen(false)
       toast.success("已创建")
-      router.refresh()
+      // router.refresh() 在 Next 16 dev mode + Turbopack 不更新 data state
+      // (v1.2.2 实测，3 次不同方案都失败)，改用 router.replace 强制 navigation：
+      // 会重置 client state (filters/selected/view) 但 server 真的重新 SSR，
+      // new initial prop 传到 ItemsClient，useEffect([initial]) 同步到 data
+      router.replace(window.location.pathname + window.location.search, { scroll: false })
     } else if (createState?.error) {
       toast.error(createState.error)
     }
@@ -831,7 +835,7 @@ export function ItemsClient({
       setEditing(null)
       setEditingTagIds([])
       toast.success("已更新")
-      router.refresh()
+      router.replace(window.location.pathname + window.location.search, { scroll: false })
     } else if (editState?.error) {
       toast.error(editState.error)
     }
@@ -861,7 +865,7 @@ export function ItemsClient({
       if (res.error) toast.error(res.error)
       else {
         toast.success("已删除")
-        router.refresh()
+        router.replace(window.location.pathname + window.location.search, { scroll: false })
       }
     })
   }
@@ -901,7 +905,7 @@ export function ItemsClient({
       }
       toast.success(`已删除 ${selected.size} 件`)
       clearSelection()
-      router.refresh()
+      router.replace(window.location.pathname + window.location.search, { scroll: false })
     })
   }
 
