@@ -23,6 +23,13 @@ const nextConfig: NextConfig = {
     serverActions: {
       bodySizeLimit: "20mb",
     },
+    // proxy.ts (Next 16 把 middleware 重命名为 proxy) 层 body 大小限制。
+    // 独立于 serverActions.bodySizeLimit：proxy 在前，请求先到 proxy 才到 server action。
+    // proxy 默认 10MB，多张图总大小超过会被截断 → 下游 server action 收不完整 body
+    // → 解析抛 "Unexpected end of form" → Next 整页 500 错误（v1.2.2 实测崩在这）。
+    // 必须 ≥ serverActions.bodySizeLimit：30mb 给单张 10MB 图 + 文本字段 + 余量。
+    // 注意：experimental.middlewareClientMaxBodySize 是这个的已弃用别名，不能两个都设。
+    proxyClientMaxBodySize: "30mb",
   },
   // 把 /uploads/* 重写到 /api/uploads/[...path],由 Route Handler 每次读盘服务。
   // 原因:Next.js 16 (Turbopack) production server 启动时一次性扫 public/ 建文件

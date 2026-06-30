@@ -716,7 +716,12 @@ export function ItemsClient({
 }: Props) {
   const [filters, setFilters] = useState<ItemFilters>(initialFilters)
   const [data, setData] = useState<SearchResult>(initial)
-  const [searchPending, startSearchTransition] = useTransition()
+  // 用 useState 替代 useTransition 包裹 setData:
+  // useActionState 的 effect 里调 refetch，嵌套 useTransition + useActionState 时
+  // React 19 可能把 setData 调度推后/丢弃，导致 data 停在旧值、toast 弹了但页面不刷新。
+  // 手动 isRefetching 状态 + async setData 是 normal priority，保证 data 真更新。
+  // (v1.2.2 实测：保存后列表/弹窗显示旧图，硬刷新才正确——就是 transition 嵌套坑。)
+  const [searchPending, setSearchPending] = useState(false)
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<ItemRow | null>(null)
   const [editingTagIds, setEditingTagIds] = useState<number[]>([])
@@ -746,7 +751,8 @@ export function ItemsClient({
   }, [data.items])
 
   function refetch(next: ItemFilters) {
-    startSearchTransition(async () => {
+    setSearchPending(true)
+    void (async () => {
       try {
         const res = await searchItemsAction({
           spaceId,
@@ -758,11 +764,14 @@ export function ItemsClient({
           page: next.page,
           exp: next.exp,
         })
+        // setData 在 async IIFE 里——normal priority，不被 useActionState 的 transition 嵌套延迟
         setData(res)
       } catch (e) {
         toast.error(e instanceof Error ? e.message : "查询失败")
+      } finally {
+        setSearchPending(false)
       }
-    })
+    })()
     if (typeof window !== "undefined") {
       window.history.replaceState({}, "", buildHref(next))
     }
