@@ -56,17 +56,25 @@ export const ITEM_FORM_UNSET = "__unset__"
 export function ImageField({
   initialImages,
   disabled,
+  onBusyChange,
 }: {
   initialImages: ItemFormImage[]
   disabled: boolean
+  /** 删除/上传等异步操作进行中→true；父级用此禁用保存按钮，避免与 imageOrder 字段产生 race */
+  onBusyChange?: (busy: boolean) => void
 }) {
   const [existing, setExisting] = useState(initialImages)
   const [pending, setPending] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
+  const [isDeleting, setIsDeleting] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const [, startDelete] = useTransition()
   const { confirm, dialog: confirmDialog } = useConfirm()
+
+  useEffect(() => {
+    onBusyChange?.(isDeleting)
+  }, [isDeleting, onBusyChange])
 
   useEffect(() => {
     const urls = pending.map((f) => URL.createObjectURL(f))
@@ -77,6 +85,7 @@ export function ImageField({
   }, [pending])
 
   const slots = MAX_IMAGES_PER_ITEM - existing.length - pending.length
+  const innerDisabled = disabled || isDeleting
 
   function syncInputFiles(next: File[]) {
     if (!inputRef.current) return
@@ -126,12 +135,18 @@ export function ImageField({
       return
     const fd = new FormData()
     fd.append("id", String(id))
+    setIsDeleting(true)
     startDelete(async () => {
-      const res = await deleteItemImageAction(undefined, fd)
-      if (res.error) toast.error(res.error)
-      else {
-        setExisting((arr) => arr.filter((im) => im.id !== id))
-        toast.success("已删除")
+      try {
+        const res = await deleteItemImageAction(undefined, fd)
+        if (res.error) {
+          toast.error(res.error)
+        } else {
+          setExisting((arr) => arr.filter((im) => im.id !== id))
+          toast.success("已删除")
+        }
+      } finally {
+        setIsDeleting(false)
       }
     })
   }
@@ -159,7 +174,7 @@ export function ImageField({
               </span>
             )}
             {existing.length > 1 && (
-              <div className="absolute bottom-1 inset-x-1 flex justify-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+              <div className="absolute bottom-1 inset-x-1 flex justify-center gap-0.5 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity">
                 <button
                   type="button"
                   onClick={() => moveImage(i, -1)}
@@ -184,7 +199,7 @@ export function ImageField({
               type="button"
               onClick={() => handleDeleteExisting(img.id)}
               disabled={disabled}
-              className="absolute top-1 right-1 size-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity disabled:opacity-0"
+              className="absolute top-1 right-1 size-6 rounded-full bg-black/60 text-white flex items-center justify-center opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity disabled:opacity-0"
               aria-label="删除"
             >
               <X className="size-3.5" />
@@ -258,7 +273,6 @@ export function ImageField({
       <input
         ref={cameraInputRef}
         type="file"
-        name="images"
         accept="image/*"
         capture="environment"
         multiple
@@ -319,6 +333,8 @@ export function ItemForm({
   const [expiredAt, setExpiredAt] = useState<string | null>(
     item?.expiredAt ? item.expiredAt.slice(0, 10) : null
   )
+  const [imageBusy, setImageBusy] = useState(false)
+  const effectiveDisabled = pending || imageBusy
 
   return (
     <form action={formAction} className="space-y-3">
@@ -459,11 +475,15 @@ export function ItemForm({
         </p>
       </div>
 
-      <ImageField initialImages={initialImages} disabled={pending} />
+      <ImageField
+        initialImages={initialImages}
+        disabled={effectiveDisabled}
+        onBusyChange={setImageBusy}
+      />
 
       <DialogFooter showCloseButton>
-        <Button type="submit" disabled={pending}>
-          {pending ? "保存中…" : submitLabel ?? (mode === "create" ? "创建" : "保存")}
+        <Button type="submit" disabled={effectiveDisabled}>
+          {effectiveDisabled ? "保存中…" : submitLabel ?? (mode === "create" ? "创建" : "保存")}
         </Button>
       </DialogFooter>
     </form>

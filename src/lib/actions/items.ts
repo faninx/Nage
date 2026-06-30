@@ -124,159 +124,167 @@ export async function createItemAction(
   _prev: ActionState | undefined,
   formData: FormData
 ): Promise<ActionState> {
-  const user = await requireSession()
-  const parsed = CreateItemSchema.safeParse({
-    spaceId: formData.get("spaceId"),
-    name: formData.get("name"),
-    description: formData.get("description") || undefined,
-    categoryId: formData.get("categoryId") || undefined,
-    locationId: formData.get("locationId") || undefined,
-    quantity: formData.get("quantity") || 1,
-    unit: formData.get("unit") || undefined,
-    price: formData.get("price") || "",
-    tagIds: formData.get("tagIds") || "",
-    expiredAt: formData.get("expiredAt") || "",
-  })
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "参数错误" }
-  }
-  const { spaceId, name, description, categoryId, locationId, quantity, unit, price, tagIds, expiredAt } = parsed.data
-
-  if (!(await hasSpaceAccess(user.id, spaceId, "editor"))) {
-    return { error: "无权操作该空间" }
-  }
-
-  if (categoryId) {
-    const [c] = await db
-      .select()
-      .from(categories)
-      .where(and(eq(categories.id, categoryId), eq(categories.spaceId, spaceId)))
-      .limit(1)
-    if (!c) return { error: "所选分类不存在或不属于该空间" }
-  }
-  if (locationId) {
-    const [l] = await db
-      .select()
-      .from(locations)
-      .where(and(eq(locations.id, locationId), eq(locations.spaceId, spaceId)))
-      .limit(1)
-    if (!l) return { error: "所选位置不存在或不属于该空间" }
-  }
-  const tagErr = await validateTagOwnership(tagIds, spaceId)
-  if (tagErr) return { error: tagErr }
-
-  const [created] = await db
-    .insert(items)
-    .values({
-      spaceId,
-      name,
-      description: description || null,
-      categoryId: categoryId ?? null,
-      locationId: locationId ?? null,
-      quantity,
-      unit: unit || null,
-      price: price ?? null,
-      expiredAt: expiredAt ?? null,
-    })
-    .returning({ id: items.id })
-
-  if (tagIds.length > 0) {
-    try {
-      await db.insert(itemTags).values(tagIds.map((tagId) => ({ itemId: created.id, tagId })))
-    } catch (e) {
-      return { error: `标签关联失败：${e instanceof Error ? e.message : String(e)}` }
-    }
-  }
-
   try {
-    await uploadItemImages(created.id, formData)
-  } catch (e) {
-    return { error: `图片上传失败：${e instanceof Error ? e.message : String(e)}` }
-  }
+    const user = await requireSession()
+    const parsed = CreateItemSchema.safeParse({
+      spaceId: formData.get("spaceId"),
+      name: formData.get("name"),
+      description: formData.get("description") || undefined,
+      categoryId: formData.get("categoryId") || undefined,
+      locationId: formData.get("locationId") || undefined,
+      quantity: formData.get("quantity") || 1,
+      unit: formData.get("unit") || undefined,
+      price: formData.get("price") || "",
+      tagIds: formData.get("tagIds") || "",
+      expiredAt: formData.get("expiredAt") || "",
+    })
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? "参数错误" }
+    }
+    const { spaceId, name, description, categoryId, locationId, quantity, unit, price, tagIds, expiredAt } = parsed.data
 
-  revalidatePath("/items")
-  revalidatePath("/")
-  return { ok: true }
+    if (!(await hasSpaceAccess(user.id, spaceId, "editor"))) {
+      return { error: "无权操作该空间" }
+    }
+
+    if (categoryId) {
+      const [c] = await db
+        .select()
+        .from(categories)
+        .where(and(eq(categories.id, categoryId), eq(categories.spaceId, spaceId)))
+        .limit(1)
+      if (!c) return { error: "所选分类不存在或不属于该空间" }
+    }
+    if (locationId) {
+      const [l] = await db
+        .select()
+        .from(locations)
+        .where(and(eq(locations.id, locationId), eq(locations.spaceId, spaceId)))
+        .limit(1)
+      if (!l) return { error: "所选位置不存在或不属于该空间" }
+    }
+    const tagErr = await validateTagOwnership(tagIds, spaceId)
+    if (tagErr) return { error: tagErr }
+
+    const [created] = await db
+      .insert(items)
+      .values({
+        spaceId,
+        name,
+        description: description || null,
+        categoryId: categoryId ?? null,
+        locationId: locationId ?? null,
+        quantity,
+        unit: unit || null,
+        price: price ?? null,
+        expiredAt: expiredAt ?? null,
+      })
+      .returning({ id: items.id })
+
+    if (tagIds.length > 0) {
+      try {
+        await db.insert(itemTags).values(tagIds.map((tagId) => ({ itemId: created.id, tagId })))
+      } catch (e) {
+        return { error: `标签关联失败：${e instanceof Error ? e.message : String(e)}` }
+      }
+    }
+
+    try {
+      await uploadItemImages(created.id, formData)
+    } catch (e) {
+      return { error: `图片上传失败：${e instanceof Error ? e.message : String(e)}` }
+    }
+
+    revalidatePath("/items")
+    revalidatePath("/")
+    return { ok: true }
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "保存失败" }
+  }
 }
 
 export async function updateItemAction(
   _prev: ActionState | undefined,
   formData: FormData
 ): Promise<ActionState> {
-  const user = await requireSession()
-  const parsed = UpdateItemSchema.safeParse({
-    id: formData.get("id"),
-    name: formData.get("name"),
-    description: formData.get("description") || undefined,
-    categoryId: formData.get("categoryId") || undefined,
-    locationId: formData.get("locationId") || undefined,
-    quantity: formData.get("quantity") || 1,
-    unit: formData.get("unit") || undefined,
-    price: formData.get("price") || "",
-    tagIds: formData.get("tagIds") || "",
-    expiredAt: formData.get("expiredAt") || "",
-    imageOrder: formData.get("imageOrder") || "",
-  })
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? "参数错误" }
-  }
-  const { id, name, description, categoryId, locationId, quantity, unit, price, tagIds, expiredAt, imageOrder } = parsed.data
-
-  const access = await userAccessToItem(user.id, id, "editor")
-  if (!access.ok) return { error: "物品不存在或无权操作" }
-  const { spaceId } = access
-
-  if (categoryId) {
-    const [c] = await db
-      .select()
-      .from(categories)
-      .where(and(eq(categories.id, categoryId), eq(categories.spaceId, spaceId!)))
-      .limit(1)
-    if (!c) return { error: "所选分类不存在或不属于该空间" }
-  }
-  if (locationId) {
-    const [l] = await db
-      .select()
-      .from(locations)
-      .where(and(eq(locations.id, locationId), eq(locations.spaceId, spaceId!)))
-      .limit(1)
-    if (!l) return { error: "所选位置不存在或不属于该空间" }
-  }
-
-  await db
-    .update(items)
-    .set({
-      name,
-      description: description || null,
-      categoryId: categoryId ?? null,
-      locationId: locationId ?? null,
-      quantity,
-      unit: unit || null,
-      price: price ?? null,
-      expiredAt: expiredAt ?? null,
-      updatedAt: new Date(),
+  try {
+    const user = await requireSession()
+    const parsed = UpdateItemSchema.safeParse({
+      id: formData.get("id"),
+      name: formData.get("name"),
+      description: formData.get("description") || undefined,
+      categoryId: formData.get("categoryId") || undefined,
+      locationId: formData.get("locationId") || undefined,
+      quantity: formData.get("quantity") || 1,
+      unit: formData.get("unit") || undefined,
+      price: formData.get("price") || "",
+      tagIds: formData.get("tagIds") || "",
+      expiredAt: formData.get("expiredAt") || "",
+      imageOrder: formData.get("imageOrder") || "",
     })
-    .where(eq(items.id, id))
+    if (!parsed.success) {
+      return { error: parsed.error.issues[0]?.message ?? "参数错误" }
+    }
+    const { id, name, description, categoryId, locationId, quantity, unit, price, tagIds, expiredAt, imageOrder } = parsed.data
 
-  try {
-    await syncItemTags(id, tagIds, spaceId!)
+    const access = await userAccessToItem(user.id, id, "editor")
+    if (!access.ok) return { error: "物品不存在或无权操作" }
+    const { spaceId } = access
+
+    if (categoryId) {
+      const [c] = await db
+        .select()
+        .from(categories)
+        .where(and(eq(categories.id, categoryId), eq(categories.spaceId, spaceId!)))
+        .limit(1)
+      if (!c) return { error: "所选分类不存在或不属于该空间" }
+    }
+    if (locationId) {
+      const [l] = await db
+        .select()
+        .from(locations)
+        .where(and(eq(locations.id, locationId), eq(locations.spaceId, spaceId!)))
+        .limit(1)
+      if (!l) return { error: "所选位置不存在或不属于该空间" }
+    }
+
+    await db
+      .update(items)
+      .set({
+        name,
+        description: description || null,
+        categoryId: categoryId ?? null,
+        locationId: locationId ?? null,
+        quantity,
+        unit: unit || null,
+        price: price ?? null,
+        expiredAt: expiredAt ?? null,
+        updatedAt: new Date(),
+      })
+      .where(eq(items.id, id))
+
+    try {
+      await syncItemTags(id, tagIds, spaceId!)
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : "标签关联失败" }
+    }
+
+    // 先固化现有图顺序，新上传的图走 max+1 自动追加到末尾
+    const orderErr = await syncItemImageOrder(id, imageOrder)
+    if (orderErr) return { error: orderErr }
+
+    try {
+      await uploadItemImages(id, formData)
+    } catch (e) {
+      return { error: `图片上传失败：${e instanceof Error ? e.message : String(e)}` }
+    }
+
+    revalidatePath("/items")
+    revalidatePath(`/items/${id}`)
+    return { ok: true }
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "标签关联失败" }
+    return { error: e instanceof Error ? e.message : "保存失败" }
   }
-
-  // 先固化现有图顺序，新上传的图走 max+1 自动追加到末尾
-  const orderErr = await syncItemImageOrder(id, imageOrder)
-  if (orderErr) return { error: orderErr }
-
-  try {
-    await uploadItemImages(id, formData)
-  } catch (e) {
-    return { error: `图片上传失败：${e instanceof Error ? e.message : String(e)}` }
-  }
-
-  revalidatePath("/items")
-  revalidatePath(`/items/${id}`)
-  return { ok: true }
 }
 
 export async function deleteItemAction(formData: FormData): Promise<ActionState> {
