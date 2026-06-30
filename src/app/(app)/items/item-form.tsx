@@ -21,7 +21,7 @@ import { TagsMultiSelect, type TagOpt } from "@/components/tags-multi-select"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { deleteItemImageAction } from "@/lib/actions/images"
 import { MAX_IMAGES_PER_ITEM } from "@/lib/actions/types"
-import { ImagePlus, X, ArrowUp, ArrowDown } from "lucide-react"
+import { ImagePlus, X, ArrowUp, ArrowDown, Camera } from "lucide-react"
 import { toast } from "sonner"
 
 export type ItemFormItem = {
@@ -64,6 +64,7 @@ export function ImageField({
   const [pending, setPending] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
   const inputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const [, startDelete] = useTransition()
   const { confirm, dialog: confirmDialog } = useConfirm()
 
@@ -213,15 +214,35 @@ export function ImageField({
           </div>
         ))}
         {slots > 0 && (
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={disabled}
-            className="aspect-square rounded-md border border-dashed flex flex-col items-center justify-center gap-0.5 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors text-xs"
-          >
-            <ImagePlus className="size-5" />
-            添加图片
-          </button>
+          <>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={disabled}
+              className="hidden md:flex aspect-square rounded-md border border-dashed flex-col items-center justify-center gap-0.5 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors text-xs"
+            >
+              <ImagePlus className="size-5" />
+              添加图片
+            </button>
+            <button
+              type="button"
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={disabled}
+              className="md:hidden aspect-square rounded-md border border-dashed flex flex-col items-center justify-center gap-0.5 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors text-xs"
+            >
+              <Camera className="size-5" />
+              拍照
+            </button>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={disabled}
+              className="md:hidden aspect-square rounded-md border border-dashed flex flex-col items-center justify-center gap-0.5 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors text-xs"
+            >
+              <ImagePlus className="size-5" />
+              相册
+            </button>
+          </>
         )}
       </div>
       <input
@@ -229,6 +250,17 @@ export function ImageField({
         type="file"
         name="images"
         accept="image/*"
+        multiple
+        onChange={onFileChange}
+        className="hidden"
+        disabled={disabled}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        name="images"
+        accept="image/*"
+        capture="environment"
         multiple
         onChange={onFileChange}
         className="hidden"
