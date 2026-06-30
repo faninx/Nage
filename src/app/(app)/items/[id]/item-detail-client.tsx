@@ -80,7 +80,10 @@ export function ItemDetailClient({ item, categories, locations, tags }: Props) {
     if (editState?.ok) {
       setEditOpen(false)
       toast.success("已更新")
-      router.refresh()
+      // v1.2.2: router.refresh() / router.replace() 在 Next 16 dev mode + Turbopack
+      // 都没让 client 真的拿到新 item prop (list 页 + 详情页实测都失败)。
+      // 兜底：window.location.reload() —— 跟用户硬刷新等价，server 真的重新 SSR。
+      window.location.reload()
     } else if (editState?.error) {
       toast.error(editState.error)
     }
@@ -103,8 +106,8 @@ export function ItemDetailClient({ item, categories, locations, tags }: Props) {
         setConfirmOpen(false)
       } else {
         toast.success("已删除")
-        router.push("/items")
-        router.refresh()
+        // v1.2.2: router.push + router.refresh 同样不更新，window.location.assign 兜底
+        window.location.assign("/items")
       }
     })
   }
