@@ -11,6 +11,7 @@ import {
 } from "react"
 import Image from "next/image"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -722,6 +723,13 @@ export function ItemsClient({
   // 手动 isRefetching 状态 + async setData 是 normal priority，保证 data 真更新。
   // (v1.2.2 实测：保存后列表/弹窗显示旧图，硬刷新才正确——就是 transition 嵌套坑。)
   const [searchPending, setSearchPending] = useState(false)
+  const router = useRouter()
+  // server 重新 SSR 后 initial prop 变化时把新 initial 同步到 data state
+  // (router.refresh() 不重 mount client component，所以 useState(initial) 不会重置,
+  // 需要这个 effect 显式同步)
+  useEffect(() => {
+    setData(initial)
+  }, [initial])
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<ItemRow | null>(null)
   const [editingTagIds, setEditingTagIds] = useState<number[]>([])
@@ -806,7 +814,7 @@ export function ItemsClient({
     if (createState?.ok) {
       setCreateOpen(false)
       toast.success("已创建")
-      refreshCurrent()
+      router.refresh()
     } else if (createState?.error) {
       toast.error(createState.error)
     }
@@ -823,7 +831,7 @@ export function ItemsClient({
       setEditing(null)
       setEditingTagIds([])
       toast.success("已更新")
-      refreshCurrent()
+      router.refresh()
     } else if (editState?.error) {
       toast.error(editState.error)
     }
@@ -853,7 +861,7 @@ export function ItemsClient({
       if (res.error) toast.error(res.error)
       else {
         toast.success("已删除")
-        refreshCurrent()
+        router.refresh()
       }
     })
   }
@@ -893,7 +901,7 @@ export function ItemsClient({
       }
       toast.success(`已删除 ${selected.size} 件`)
       clearSelection()
-      refreshCurrent()
+      router.refresh()
     })
   }
 
