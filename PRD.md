@@ -256,6 +256,7 @@ borrow_records (id, item_id, borrower, borrowed_at, expected_return_at, returned
 | **M4** | 二维码生成 + 移动端扫码查看 + 导入/导出（JSON） |
 | **M5** | Docker 化 + 部署文档 + 备份脚本 |
 | **M7** | 多用户/多空间协作（v1.1.0 ✅）：`space_members` 表 + `users.last_space_id` + 三档角色 + 空间设置/切换 + 导入导出放宽 |
+| **M8.1** | **MCP Server（只读 MVP）**：`/api/mcp` Streamable HTTP + Bearer token 双轨鉴权 + 5 个 read 工具（`list_locations` / `list_categories` / `list_tags` / `search_items` / `get_item`）+ 设置页管理 token |
 | **M6+** | v1.2：借出归还 / 保质期增强收口 / PWA / i18n（暗黑模式已在 v1.0 完成） |
 
 ---

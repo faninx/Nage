@@ -1,0 +1,360 @@
+// M8.1 MCP Server 端到端验收（只读 MVP）：
+//   - /api/mcp 双轨鉴权（Bearer + cookie）
+//   - Origin 校验
+//   - 5 个 read 工具（list_locations / list_categories / list_tags / search_items / get_item）
+//   - 空间级 ACL（hasSpaceAccess）
+//   - 负例：token 错 / 没权限 / 参数错
+//
+// 用法：node node_modules/tsx/dist/cli.mjs scripts/test-mcp.ts
+//
+// 走 MCP Client SDK 而不是 raw fetch，因为：
+// 1. SDK 自动处理 Accept 头（必须含 application/json + text/event-stream）
+// 2. 走真实客户端路径，验证 SDK 与服务端协议兼容性
+// 3. 直接发 fetch 也能跑通，但 SDK 路径更接近 Claude Desktop / Cursor 的实际使用方式
+
+import { config } from "dotenv"
+config({ path: ".env.local" })
+
+import { SignJWT } from "jose"
+import { createHash, randomBytes } from "node:crypto"
+import Database from "better-sqlite3"
+import { Client } from "@modelcontextprotocol/sdk/client/index.js"
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+
+const BASE = "http://localhost:3000"
+const MCP_URL = `${BASE}/api/mcp`
+const secret = new TextEncoder().encode(process.env.JWT_SECRET!)
+
+if (!process.env.JWT_SECRET) {
+  console.error("❌ JWT_SECRET 不在 .env.local")
+  process.exit(1)
+}
+
+async function makeCookie(userId: number, username: string, role: "admin" | "member") {
+  const token = await new SignJWT({ sub: String(userId), role, username })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("7d")
+    .sign(secret)
+  return `nage_session=${token}`
+}
+
+function makeBearer(userId: number, name: string): { token: string; hash: string; lastFour: string } {
+  const sec = randomBytes(32).toString("base64url")
+  const token = `nage_mcp_${sec}`
+  const hash = createHash("sha256").update(sec).digest("hex")
+  const lastFour = sec.slice(-4)
+  // 直接插 DB（绕过 Server Action；E2E 不走 action）
+  const db = new Database(process.env.DATABASE_URL || "./data/nage.db")
+  db.prepare(
+    "INSERT INTO mcp_tokens (user_id, name, token_hash, last_four) VALUES (?, ?, ?, ?)"
+  ).run(userId, name, hash, lastFour)
+  db.close()
+  return { token, hash, lastFour }
+}
+
+async function withClient(opts: {
+  cookie?: string
+  bearer?: string
+  origin?: string
+}): Promise<Client> {
+  const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), {
+    requestInit: {
+      headers: {
+        ...(opts.cookie ? { cookie: opts.cookie } : {}),
+        ...(opts.bearer ? { Authorization: `Bearer ${opts.bearer}` } : {}),
+        ...(opts.origin ? { Origin: opts.origin } : {}),
+      },
+    },
+  })
+  const client = new Client(
+    { name: "nage-mcp-e2e", version: "0.1.0" },
+    { capabilities: {} }
+  )
+  await client.connect(transport)
+  return client
+}
+
+/** 取 callTool 的 content[0].text（MCP SDK 类型是 unknown，运行时是 text 内容） */
+function textOf(res: unknown): string {
+  const r = res as { content?: Array<{ type: string; text: string }> }
+  const c = r.content
+  if (!c || c.length === 0 || c[0].type !== "text") {
+    throw new Error(`❌ 响应不是 text 类型: ${JSON.stringify(c)}`)
+  }
+  return c[0].text
+}
+
+async function main() {
+  console.log("=== M8.1 MCP Server 端到端验收 ===\n")
+
+  const db = new Database(process.env.DATABASE_URL || "./data/nage.db")
+
+  // ----------------------------------------------------------
+  // 【0】前置：mcp_tokens 表存在
+  // ----------------------------------------------------------
+  console.log("【0】schema 检查：mcp_tokens 表")
+  const tbl = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='mcp_tokens'")
+    .get()
+  if (!tbl) throw new Error("❌ mcp_tokens 表未建（migration 0004 未跑）")
+  console.log("  ✅ mcp_tokens 表存在\n")
+
+  // ----------------------------------------------------------
+  // 【1】准备测试用户 + 空间
+  // ----------------------------------------------------------
+  console.log("【1】准备测试用户 + 空间")
+  const admin = db
+    .prepare("SELECT id, username FROM users WHERE role='admin' LIMIT 1")
+    .get() as { id: number; username: string } | undefined
+  if (!admin) throw new Error("❌ DB 无 admin")
+  const adminCookie = await makeCookie(admin.id, admin.username, "admin")
+  const adminSpace = db
+    .prepare("SELECT id, name FROM spaces WHERE owner_id=? ORDER BY id LIMIT 1")
+    .get(admin.id) as { id: number; name: string } | undefined
+  if (!adminSpace) throw new Error("❌ admin 无空间")
+  console.log(`  ✓ admin id=${admin.id}, space=${adminSpace.id}`)
+
+  let alice = db
+    .prepare("SELECT id, username FROM users WHERE username='alice'")
+    .get() as { id: number; username: string } | undefined
+  if (!alice) {
+    const bcrypt = await import("bcryptjs")
+    const hash = await bcrypt.hash("password123", 12)
+    const r = db
+      .prepare(
+        "INSERT INTO users (username, password_hash, nickname, role, is_active) VALUES (?, ?, ?, 'member', 1) RETURNING id, username"
+      )
+      .get("alice", hash, "艾莉丝") as { id: number; username: string }
+    alice = r
+    console.log(`  ✓ alice 已创建 id=${alice.id}`)
+  } else {
+    console.log(`  ✓ alice id=${alice.id}（已存在）`)
+  }
+  // alice 不是 admin 空间的成员（hasSpaceAccess 应拒）
+  const aliceInAdmin = db
+    .prepare("SELECT 1 FROM space_members WHERE space_id=? AND user_id=?")
+    .get(adminSpace.id, alice.id)
+  if (aliceInAdmin) {
+    db.prepare("DELETE FROM space_members WHERE space_id=? AND user_id=?").run(
+      adminSpace.id,
+      alice.id
+    )
+    console.log("  ✓ 已清掉 alice 的 admin 空间成员行")
+  }
+  console.log()
+
+  // ----------------------------------------------------------
+  // 【2】鉴权负例：无 token / 错 token / 错 origin
+  // ----------------------------------------------------------
+  console.log("【2】鉴权负例")
+  // 无任何 auth
+  try {
+    await withClient({})
+    throw new Error("❌ 无 auth 应该被拒")
+  } catch (e) {
+    const msg = (e as Error).message
+    if (!msg.includes("401") && !msg.includes("Unauthorized") && !msg.includes("32000")) {
+      throw new Error(`❌ 无 auth 错误码不对: ${msg}`)
+    }
+    console.log("  ✅ 无 auth → 401 -32000")
+  }
+  // 错 Bearer
+  try {
+    await withClient({ bearer: "nage_mcp_" + "A".repeat(43) })
+    throw new Error("❌ 错 Bearer 应该被拒")
+  } catch (e) {
+    const msg = (e as Error).message
+    if (!msg.includes("401") && !msg.includes("32000")) {
+      throw new Error(`❌ 错 Bearer 错误码不对: ${msg}`)
+    }
+    console.log("  ✅ 错 Bearer → 401 -32000")
+  }
+  // 错 origin（prod 模式检查需要 PUBLIC_URL；dev 模式 localhost 才放行）
+  // 这里只在 prod 测；dev 跳过
+  if (process.env.NODE_ENV === "production" && process.env.PUBLIC_URL) {
+    try {
+      await withClient({ cookie: adminCookie, origin: "https://evil.example" })
+      throw new Error("❌ 错 origin 应该被拒")
+    } catch (e) {
+      const msg = (e as Error).message
+      if (!msg.includes("403") && !msg.includes("Origin")) {
+        throw new Error(`❌ 错 origin 错误码不对: ${msg}`)
+      }
+      console.log("  ✅ 错 origin → 403")
+    }
+  } else {
+    console.log("  ℹ️  错 origin 测试跳过（dev 模式 / 未设 PUBLIC_URL）")
+  }
+  console.log()
+
+  // ----------------------------------------------------------
+  // 【3】Cookie 鉴权路径：tools/list 应列 5 个工具
+  // ----------------------------------------------------------
+  console.log("【3】Cookie 鉴权路径 → tools/list")
+  const client = await withClient({ cookie: adminCookie })
+  const toolsRes = await client.listTools()
+  const toolNames = toolsRes.tools.map((t) => t.name).sort()
+  const expectedTools = [
+    "get_item",
+    "list_categories",
+    "list_locations",
+    "list_tags",
+    "search_items",
+  ]
+  for (const name of expectedTools) {
+    if (!toolNames.includes(name)) {
+      throw new Error(`❌ 缺少工具 ${name}；实际: ${toolNames.join(",")}`)
+    }
+  }
+  console.log(`  ✅ tools/list 返回 ${toolNames.length} 个工具: ${toolNames.join(", ")}`)
+  console.log()
+
+  // ----------------------------------------------------------
+  // 【4】5 个工具都至少能调通（basic shape）
+  // ----------------------------------------------------------
+  console.log("【4】5 个 read 工具 basic shape")
+
+  // list_locations → 返回嵌套树（数组）
+  const locRes = await client.callTool({
+    name: "list_locations",
+    arguments: { spaceId: adminSpace.id },
+  })
+  if (locRes.isError) throw new Error(`❌ list_locations 失败: ${JSON.stringify(locRes)}`)
+  const locData = JSON.parse(textOf(locRes))
+  if (!Array.isArray(locData)) throw new Error("❌ list_locations 不是数组")
+  console.log(`  ✅ list_locations → ${locData.length} 个根节点（含子树的扁平统计）`)
+
+  // list_categories → 数组
+  const catRes = await client.callTool({
+    name: "list_categories",
+    arguments: { spaceId: adminSpace.id },
+  })
+  if (catRes.isError) throw new Error(`❌ list_categories 失败`)
+  const catData = JSON.parse(textOf(catRes))
+  if (!Array.isArray(catData)) throw new Error("❌ list_categories 不是数组")
+  console.log(`  ✅ list_categories → ${catData.length} 个分类`)
+
+  // list_tags → 数组
+  const tagRes = await client.callTool({
+    name: "list_tags",
+    arguments: { spaceId: adminSpace.id },
+  })
+  if (tagRes.isError) throw new Error(`❌ list_tags 失败`)
+  const tagData = JSON.parse(textOf(tagRes))
+  if (!Array.isArray(tagData)) throw new Error("❌ list_tags 不是数组")
+  console.log(`  ✅ list_tags → ${tagData.length} 个标签`)
+
+  // search_items → SearchResult 对象（items + total + totalPages）
+  const searchRes = await client.callTool({
+    name: "search_items",
+    arguments: { spaceId: adminSpace.id, page: 1 },
+  })
+  if (searchRes.isError) throw new Error(`❌ search_items 失败`)
+  const searchData = JSON.parse(textOf(searchRes))
+  if (typeof searchData.total !== "number") throw new Error("❌ search_items 缺 total")
+  if (!Array.isArray(searchData.items)) throw new Error("❌ search_items.items 不是数组")
+  console.log(`  ✅ search_items → total=${searchData.total}, 本页 ${searchData.items.length} items`)
+
+  // get_item → 拿一个真实 id
+  if (searchData.items.length === 0) {
+    console.log("  ℹ️  空间无 item，跳过 get_item")
+  } else {
+    const someItemId = searchData.items[0].id
+    const itemRes = await client.callTool({
+      name: "get_item",
+      arguments: { spaceId: adminSpace.id, itemId: someItemId },
+    })
+    if (itemRes.isError) throw new Error(`❌ get_item 失败`)
+    const itemData = JSON.parse(textOf(itemRes))
+    if (!itemData.item || itemData.item.id !== someItemId) {
+      throw new Error(`❌ get_item 没拿到 item.id=${someItemId}`)
+    }
+    if (!Array.isArray(itemData.images)) throw new Error("❌ get_item.images 不是数组")
+    if (!Array.isArray(itemData.tags)) throw new Error("❌ get_item.tags 不是数组")
+    console.log(
+      `  ✅ get_item(id=${someItemId}) → name="${itemData.item.name}", ${itemData.images.length} 图, ${itemData.tags.length} 标签`
+    )
+  }
+  console.log()
+
+  // ----------------------------------------------------------
+  // 【5】负例：alice 用 cookie 调 admin 空间的工具 → -32001 forbidden
+  // ----------------------------------------------------------
+  console.log("【5】空间 ACL 负例：非成员访问他人空间")
+  const aliceClient = await withClient({ cookie: await makeCookie(alice.id, alice.username, "member") })
+  const forbiddenRes = await aliceClient.callTool({
+    name: "list_categories",
+    arguments: { spaceId: adminSpace.id },
+  })
+  if (!forbiddenRes.isError) {
+    throw new Error("❌ 非成员访问应该被拒")
+  }
+  const forbiddenText = textOf(forbiddenRes)
+  if (!forbiddenText.includes("-32001") && !forbiddenText.includes("无权访问")) {
+    throw new Error(`❌ 错误码不对: ${forbiddenText}`)
+  }
+  console.log("  ✅ 非成员访问 → isError + -32001 forbidden")
+  console.log()
+
+  // ----------------------------------------------------------
+  // 【6】负例：参数错（search_items page='abc'）→ -32602 invalid args
+  // ----------------------------------------------------------
+  console.log("【6】参数校验负例")
+  const badArgsRes = await client.callTool({
+    name: "search_items",
+    arguments: { spaceId: adminSpace.id, page: "abc" as unknown as number },
+  })
+  if (!badArgsRes.isError) {
+    throw new Error("❌ 错参数应该被拒")
+  }
+  const badArgsText = textOf(badArgsRes)
+  if (!badArgsText.includes("32602") && !badArgsText.toLowerCase().includes("invalid")) {
+    throw new Error(`❌ 错误码不对: ${badArgsText}`)
+  }
+  console.log("  ✅ page='abc' → isError + -32602 invalid args")
+  console.log()
+
+  // ----------------------------------------------------------
+  // 【7】Bearer 鉴权路径：直接插 mcp_tokens 行，重开 client 走 Bearer
+  // ----------------------------------------------------------
+  console.log("【7】Bearer 鉴权路径")
+  const bearer = makeBearer(admin.id, "e2e_test")
+  console.log(`  ✓ 已为 admin 生成 e2e_test token (尾号 …${bearer.lastFour})`)
+  const bearerClient = await withClient({ bearer: bearer.token })
+  const bearerToolRes = await bearerClient.callTool({
+    name: "list_tags",
+    arguments: { spaceId: adminSpace.id },
+  })
+  if (bearerToolRes.isError) throw new Error("❌ Bearer 调工具失败")
+  const bearerData = JSON.parse(textOf(bearerToolRes))
+  if (!Array.isArray(bearerData) || bearerData.length === 0) {
+    throw new Error("❌ Bearer 鉴权返回空（应该与 cookie 鉴权等价）")
+  }
+  console.log(`  ✅ Bearer token 调 list_tags → ${bearerData.length} 个标签`)
+
+  // last_used_at 应被更新
+  const row = db
+    .prepare("SELECT last_used_at FROM mcp_tokens WHERE last_four=?")
+    .get(bearer.lastFour) as { last_used_at: number | null } | undefined
+  if (!row?.last_used_at) throw new Error("❌ last_used_at 未更新")
+  console.log(`  ✅ last_used_at 已更新到 ${new Date(row.last_used_at * 1000).toISOString()}`)
+  console.log()
+
+  // ----------------------------------------------------------
+  // 【8】清理测试数据
+  // ----------------------------------------------------------
+  console.log("【8】清理测试数据")
+  db.prepare("DELETE FROM mcp_tokens WHERE name='e2e_test'").run()
+  console.log("  ✅ e2e_test token 已删")
+  console.log()
+
+  db.close()
+  console.log("🎉 M8.1 MCP Server 验收全部通过！")
+}
+
+main().catch((e) => {
+  console.error("❌ 失败:", e instanceof Error ? e.message : e)
+  if (e instanceof Error) console.error(e.stack)
+  process.exit(1)
+})
