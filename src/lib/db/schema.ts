@@ -222,11 +222,37 @@ export const loginAttempts = sqliteTable("login_attempts", {
 })
 
 // ============================================================
+// MCP Bearer 令牌（M8.1 起：让外部 AI agent 用 Bearer token 调 Nage）
+// 粒度：per-user（用户级）。token 不绑空间，工具调用时 spaceId 在 input 里校验。
+// hash：SHA-256 hex（256-bit 随机 + indexed unique 已够；不用 bcrypt 拖性能）
+// ============================================================
+export const mcpTokens = sqliteTable(
+  "mcp_tokens",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    // SHA-256 hex (64 chars). UNIQUE 自带索引，按 hash O(log n) 查找
+    tokenHash: text("token_hash").notNull().unique(),
+    // secret 后 4 位，UI 列表识别用（高熵随机泄露 4/256 bits 可忽略）
+    lastFour: text("last_four").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .default(sql`(unixepoch())`),
+    lastUsedAt: integer("last_used_at", { mode: "timestamp" }),
+  },
+  (t) => [index("mcp_tokens_user_idx").on(t.userId)]
+)
+
+// ============================================================
 // Relations（用于 Drizzle 的 with: 关联查询）
 // ============================================================
 export const usersRelations = relations(users, ({ many }) => ({
   spaces: many(spaces),
   spaceMembers: many(spaceMembers),
+  mcpTokens: many(mcpTokens),
 }))
 
 export const spacesRelations = relations(spaces, ({ one, many }) => ({
@@ -287,6 +313,10 @@ export const itemTagsRelations = relations(itemTags, ({ one }) => ({
   tag: one(tags, { fields: [itemTags.tagId], references: [tags.id] }),
 }))
 
+export const mcpTokensRelations = relations(mcpTokens, ({ one }) => ({
+  user: one(users, { fields: [mcpTokens.userId], references: [users.id] }),
+}))
+
 // ============================================================
 // 类型导出
 // ============================================================
@@ -304,3 +334,5 @@ export type Tag = typeof tags.$inferSelect
 export type NewTag = typeof tags.$inferInsert
 export type Item = typeof items.$inferSelect
 export type NewItem = typeof items.$inferInsert
+export type McpToken = typeof mcpTokens.$inferSelect
+export type NewMcpToken = typeof mcpTokens.$inferInsert
