@@ -3,7 +3,7 @@ import { jwtVerify } from "jose"
 
 const SESSION_COOKIE = "nage_session"
 
-const PUBLIC_PATHS = ["/login", "/api/auth"]
+const PUBLIC_PATHS = ["/login", "/api/auth", "/api/mcp"]
 
 function getSecret(): Uint8Array | null {
   const raw = process.env.JWT_SECRET
