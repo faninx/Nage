@@ -3,7 +3,9 @@
  *
  * 设计要点：
  * - runtime = "nodejs"：better-sqlite3 + node:crypto 都需要 Node runtime（Edge 跑不了）
- * - 单 transport 实例：M8.1 全 stateless，无需 sessionIdGenerator
+ * - 每个请求新建 server + transport（SDK stateless 模式强制要求）
+ *   - 一个 McpServer 同一时刻只能 connect 一个 transport
+ *   - transport 第二次 handleRequest 会抛 "Stateless transport cannot be reused"
  * - enableJsonResponse: true：不开 SSE 流，所有响应直接 JSON
  * - Origin 校验：MCP spec 强制防 DNS rebinding
  *   - 无 Origin（CLI / SDK）→ 放行
@@ -17,30 +19,13 @@
 
 import { NextRequest, NextResponse } from "next/server"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
-import { getMcpServer } from "@/lib/mcp/server"
+import { createMcpServer } from "@/lib/mcp/server"
 import { resolveMcpAuth } from "@/lib/auth/mcp-auth"
 import { setCurrentMcpAuth } from "@/lib/mcp/context"
 import { RPC_ERROR } from "@/lib/mcp/errors"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
-
-// 单 transport 实例（stateless 模式共享一个 OK，因为 M8.1 全 stateless + 单进程）
-const transport = new WebStandardStreamableHTTPServerTransport({
-  sessionIdGenerator: undefined,
-  enableJsonResponse: true,
-})
-
-let _initialized = false
-function ensureInitialized() {
-  if (_initialized) return
-  const server = getMcpServer()
-  transport
-    .start()
-    .then(() => server.connect(transport))
-    .catch((e) => console.error("[mcp] transport init failed", e))
-  _initialized = true
-}
 
 /**
  * Origin 校验（防 DNS rebinding）
@@ -68,8 +53,6 @@ function isOriginAllowed(req: NextRequest): boolean {
 }
 
 async function handle(req: NextRequest): Promise<Response> {
-  ensureInitialized()
-
   if (!isOriginAllowed(req)) {
     return NextResponse.json({ error: "Origin 不被允许" }, { status: 403 })
   }
@@ -88,10 +71,29 @@ async function handle(req: NextRequest): Promise<Response> {
 
   // 把鉴权结果注入 context，工具 handler 通过 currentMcpAuth() 取
   setCurrentMcpAuth(auth)
+
+  // 每个请求新建 server + transport（stateless 强制）
+  const server = createMcpServer()
+  const transport = new WebStandardStreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
+    enableJsonResponse: true,
+  })
+
   try {
+    await server.connect(transport)
     return await transport.handleRequest(req)
   } finally {
     setCurrentMcpAuth(null)
+    try {
+      await transport.close()
+    } catch {
+      // ignore close errors
+    }
+    try {
+      await server.close()
+    } catch {
+      // ignore close errors
+    }
   }
 }
 

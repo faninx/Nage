@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,7 +10,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { ChevronDown, KeyRound, Pencil, UserRound } from "lucide-react"
+import { ChevronDown, KeyRound, Pencil, UserRound, Wand2 } from "lucide-react"
 import { NicknameEditorDialog } from "./nickname-editor"
 import { ChangePasswordDialog } from "./change-password-dialog"
 
@@ -56,6 +57,12 @@ export function UserMenu({ nickname, isAdmin }: Props) {
           <DropdownMenuItem onSelect={() => setPasswordOpen(true)}>
             <KeyRound className="size-4" />
             修改密码
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <Link href="/settings/mcp">
+              <Wand2 className="size-4" />
+              MCP 令牌
+            </Link>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

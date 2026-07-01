@@ -298,3 +298,17 @@ export const ItemListSearchSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   exp: z.enum(["expired", "7d", "30d", "all"]).default("all"),
 })
+
+// ============================================================
+// MCP 令牌（M8.1）
+// ============================================================
+export const CreateMcpTokenSchema = z.object({
+  name: z
+    .string()
+    .min(1, "名称不能为空")
+    .max(50, "名称最长 50 字"),
+})
+
+export const RevokeMcpTokenSchema = z.object({
+  id: z.coerce.number().int().positive(),
+})
