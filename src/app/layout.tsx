@@ -1,8 +1,8 @@
 import type { Metadata, Viewport } from "next"
 import { GeistSans } from "geist/font/sans"
 import { GeistMono } from "geist/font/mono"
+import { ThemeProvider } from "next-themes"
 import { Toaster } from "@/components/ui/sonner"
-import { ThemeScript } from "@/components/layout/theme-script"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -53,15 +53,24 @@ export default function RootLayout({
       <head>
         {/* PWA 补充：next-pwa 会在 build 时生成 <link rel="manifest">，但 iOS 需要单独 link apple-touch-icon */}
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
-        {/* 防 FOUC：必须在 <head> 里、且 <html> 上 suppressHydrationWarning，
-            这样 inline script 在 body 解析前执行完，<html class="dark"> 已经加上。
-            之前放在 <body> 里在某些页面（item detail / members）会晚到 body 解析后，
-            导致刷新整页跳回 light。 */}
-        <ThemeScript />
       </head>
       <body className="min-h-full flex flex-col">
-        {children}
-        <Toaster />
+        {/* next-themes ThemeProvider 替代手写 ThemeScript：
+            - 自带 FOUC 防止脚本（canonical 模式）
+            - 完整处理 React 19 hydration / 嵌套 layout / 服务工作者缓存
+            - storageKey 沿用 'nage-theme' 保持用户已有 localStorage 不丢
+            - attribute="class" 用 .dark 类，跟 Tailwind v4 @custom-variant dark 兼容
+            - 默认 light/dark/system 三档；之前手写 script 跟 toggle 都是这三档 */}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          storageKey="nage-theme"
+          disableTransitionOnChange
+        >
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   )
