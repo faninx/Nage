@@ -71,8 +71,8 @@ function CopyButton({ value }: { value: string }) {
   return (
     <Button
       type="button"
-      variant="outline"
-      size="default"
+      variant="ghost"
+      size="icon-sm"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value)
@@ -83,9 +83,10 @@ function CopyButton({ value }: { value: string }) {
           toast.error("复制失败")
         }
       }}
+      aria-label="复制令牌"
+      title="复制令牌"
     >
       {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-      {copied ? "已复制" : "复制"}
     </Button>
   )
 }
@@ -279,12 +280,14 @@ export function McpTokensClient({ initial }: Props) {
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
-            {/* Token 框 + 复制按钮并排（标准模式） */}
-            <div className="flex items-stretch gap-2">
-              <div className="flex-1 rounded-md border bg-muted/50 px-3 py-2 font-mono text-xs break-all select-all min-w-0">
+            {/* Token 框 + 复制按钮内嵌（标准模式：GitHub PAT / Vercel API key） */}
+            <div className="relative">
+              <div className="rounded-md border bg-muted/50 pl-3 pr-12 py-2 font-mono text-xs break-all select-all min-h-9">
                 {issuedToken}
               </div>
-              {issuedToken && <CopyButton value={issuedToken} />}
+              <div className="absolute right-1 top-1/2 -translate-y-1/2">
+                {issuedToken && <CopyButton value={issuedToken} />}
+              </div>
             </div>
             <div className="text-xs text-muted-foreground">
               粘贴到 AI 客户端的 MCP 配置里（Authorization header 或客户端表单）。
