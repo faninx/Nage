@@ -110,11 +110,25 @@ async function main() {
     .get() as { id: number; username: string } | undefined
   if (!admin) throw new Error("❌ DB 无 admin")
   const adminCookie = await makeCookie(admin.id, admin.username, "admin")
-  const adminSpace = db
+  let adminSpace = db
     .prepare("SELECT id, name FROM spaces WHERE owner_id=? ORDER BY id LIMIT 1")
     .get(admin.id) as { id: number; name: string } | undefined
-  if (!adminSpace) throw new Error("❌ admin 无空间")
-  console.log(`  ✓ admin id=${admin.id}, space=${adminSpace.id}`)
+  // Fresh DB（CI）上 bootstrap 只建 admin 不建空间。E2E 自给自足建一个。
+  if (!adminSpace) {
+    const r = db
+      .prepare(
+        "INSERT INTO spaces (name, owner_id) VALUES (?, ?) RETURNING id, name"
+      )
+      .get("E2E Test Space", admin.id) as { id: number; name: string }
+    adminSpace = r
+    // 同步加 admin 到 space_members（owner 角色）
+    db.prepare(
+      "INSERT INTO space_members (space_id, user_id, role) VALUES (?, ?, 'owner')"
+    ).run(adminSpace.id, admin.id)
+    console.log(`  ✓ 新建 E2E 测试空间 id=${adminSpace.id} (admin owner)`)
+  } else {
+    console.log(`  ✓ admin id=${admin.id}, space=${adminSpace.id}（已存在）`)
+  }
 
   let alice = db
     .prepare("SELECT id, username FROM users WHERE username='alice'")
