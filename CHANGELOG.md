@@ -5,6 +5,30 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.3] - 2026-07-03
+
+Docker standalone 依赖修复合集（v1.4.1/v1.4.2 启动崩溃系列 bug）+ next-themes 暗黑模式改造。**0 数据库 schema 变化，0 数据迁移**。
+
+### 修复
+
+- **Docker 启动 'Cannot find module bindings / file-uri-to-path'**（80227ee）：pnpm 不 hoist transitive deps，Dockerfile 显式 COPY 平铺
+- **Docker 启动 'Cannot find module detect-libc / semver/functions/coerce'**（9581d8d）：sharp 的 transitive deps 同根因；sub-path require 形式 grep 时要单独查
+- **Docker 启动 'Could not load sharp module using linux-x64'**（c018bf7 / f05d415 / 0101732 / edbcb0b）：四件套——deps 阶段 drop --frozen-lockfile + ENV target-platform=linux；runtime 显式 COPY `@img/colour` / `@img/sharp-linux-x64` / `@img/sharp-libvips-linux-x64`；COPY libvips .so 到 `/usr/lib/x86_64-linux-gnu/`
+- **PC 浏览器暗黑模式刷新跳回 light（item 详情 / members 列表）**（a0b7b63）：改用 `next-themes` `ThemeProvider` 替代手写 ThemeScript。next-themes 自带 canonical FOUC 脚本，比手写在 React 19 + Next 16 边缘 case 稳
+- **物品详情页切空间跳 /items**（4c9d19b）：`SpaceSwitcher` 检测 `/items/[id]` 切空间后 `router.push('/items')`
+
+### 升级指引
+
+```bash
+cd /opt/nage
+git fetch origin
+git checkout v1.4.3
+docker compose pull
+docker compose up -d
+```
+
+**强烈建议**：v1.4.1 / v1.4.2 镜像在跨平台部署（Windows/macOS host 构建）下会启动崩，必须升 v1.4.3。
+
 ## [1.4.2] - 2026-07-02
 
 主题修复 + Docker compose 清理。**0 数据库 schema 变化，0 数据迁移**。
