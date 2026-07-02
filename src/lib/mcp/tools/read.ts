@@ -17,6 +17,7 @@ import { queryItems, queryItemById, expandLocationIds } from "@/lib/db/items-que
 import { hasSpaceAccess } from "@/lib/auth/space-access"
 import { currentMcpAuth } from "@/lib/mcp/context"
 import { RPC_ERROR, rpcError } from "@/lib/mcp/errors"
+import { mcpListSpaces } from "@/lib/mcp/spaces"
 
 type McpToolResult = {
   content: [{ type: "text"; text: string }]
@@ -45,6 +46,29 @@ const fail = (e: ReturnType<typeof rpcError>): McpToolResult => ({
   content: [{ type: "text", text: JSON.stringify(e) }],
   isError: true,
 })
+
+// ============================================================
+// list_spaces（M9.1）— 列出 caller 有访问权的所有空间
+// ============================================================
+
+const ListSpacesInput = z.object({}).strict() // 不需要任何入参
+
+export const ListSpacesTool = {
+  name: "list_spaces",
+  description:
+    "List all spaces the caller has access to (with their role, owner, member count). Solves the spaceId chicken-and-egg problem for Bearer auth.",
+  inputSchema: ListSpacesInput,
+  handler: async (): Promise<McpToolResult> => {
+    try {
+      const data = await mcpListSpaces()
+      return ok(data)
+    } catch (e) {
+      return fail(
+        rpcError(null, { code: -32603, message: e instanceof Error ? e.message : "list_spaces 失败" })
+      )
+    }
+  },
+}
 
 // ============================================================
 // list_locations — 返回嵌套树

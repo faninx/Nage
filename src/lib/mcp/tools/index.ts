@@ -9,6 +9,7 @@ import {
   GetItemTool,
   ListCategoriesTool,
   ListLocationsTool,
+  ListSpacesTool,
   ListTagsTool,
   SearchItemsTool,
 } from "./read"
@@ -16,6 +17,7 @@ import { CreateItemTool, DeleteItemTool, UpdateItemTool } from "./write"
 
 export function registerReadTools(server: McpServer): void {
   for (const tool of [
+    ListSpacesTool,
     ListLocationsTool,
     ListCategoriesTool,
     ListTagsTool,
