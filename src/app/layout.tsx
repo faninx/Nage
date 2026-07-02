@@ -53,9 +53,13 @@ export default function RootLayout({
       <head>
         {/* PWA 补充：next-pwa 会在 build 时生成 <link rel="manifest">，但 iOS 需要单独 link apple-touch-icon */}
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+        {/* 防 FOUC：必须在 <head> 里、且 <html> 上 suppressHydrationWarning，
+            这样 inline script 在 body 解析前执行完，<html class="dark"> 已经加上。
+            之前放在 <body> 里在某些页面（item detail / members）会晚到 body 解析后，
+            导致刷新整页跳回 light。 */}
+        <ThemeScript />
       </head>
       <body className="min-h-full flex flex-col">
-        <ThemeScript />
         {children}
         <Toaster />
       </body>
