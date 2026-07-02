@@ -28,12 +28,16 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  // PWA: 缩放关掉，状态栏色用主题色（dark slate）
+  // PWA: 缩放关掉，状态栏色跟系统主题走（Android Chrome / iOS Safari 都认 media-query 形式）
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#0f172a",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fafafa" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f172a" },
+  ],
+  colorScheme: "light dark",
 }
 
 export default function RootLayout({

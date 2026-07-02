@@ -9,6 +9,7 @@
   "orientation": "portrait",
   "background_color": "#fafafa",
   "theme_color": "#0f172a",
+  "color_scheme": "light dark",
   "categories": ["productivity", "utilities", "lifestyle"],
   "icons": [
     {
