@@ -601,6 +601,137 @@ async function main() {
   console.log()
 
   // ----------------------------------------------------------
+  // 【8.8】M9 工具（空间 + location/category/tag CRUD + items partial update）
+  // ----------------------------------------------------------
+  console.log("【8.8】M9 工具：list_spaces + CRUD + partial update")
+
+  // 8.8a) list_spaces
+  const spacesRes = await editorClient.callTool({ name: "list_spaces", arguments: {} })
+  if (spacesRes.isError) throw new Error(`❌ list_spaces 失败: ${textOf(spacesRes)}`)
+  const spaces = JSON.parse(textOf(spacesRes)) as Array<{ id: number; name: string; role: string; isOwner: boolean }>
+  if (!Array.isArray(spaces) || spaces.length < 1) throw new Error("❌ list_spaces 返空")
+  console.log(`  ✅ list_spaces → ${spaces.length} 个空间（admin 至少 1 个）`)
+
+  // 8.8b) create_location
+  const locCreateRes = await editorClient.callTool({
+    name: "create_location",
+    arguments: { spaceId: adminSpace.id, name: "MCP 测试位置", description: "E2E 创建" },
+  })
+  if (locCreateRes.isError) throw new Error(`❌ create_location 失败: ${textOf(locCreateRes)}`)
+  const newLoc = JSON.parse(textOf(locCreateRes)) as { id: number }
+  console.log(`  ✅ create_location → id=${newLoc.id}`)
+
+  // 8.8c) update_location partial（只传 name）
+  const locUpdateRes = await editorClient.callTool({
+    name: "update_location",
+    arguments: { id: newLoc.id, name: "MCP 测试位置（改名）" },
+  })
+  if (locUpdateRes.isError) throw new Error(`❌ update_location 失败: ${textOf(locUpdateRes)}`)
+  // 验证 description 保留
+  const locDb = db
+    .prepare("SELECT name, description FROM locations WHERE id=?")
+    .get(newLoc.id) as { name: string; description: string | null } | undefined
+  if (locDb?.name !== "MCP 测试位置（改名）") throw new Error("❌ name 未改")
+  if (locDb?.description !== "E2E 创建") throw new Error("❌ description 应保留")
+  console.log("  ✅ update_location partial（name 改，description 保留）")
+
+  // 8.8d) delete_location
+  const locDelRes = await editorClient.callTool({
+    name: "delete_location",
+    arguments: { id: newLoc.id },
+  })
+  if (locDelRes.isError) throw new Error(`❌ delete_location 失败: ${textOf(locDelRes)}`)
+  const locExists = db.prepare("SELECT 1 FROM locations WHERE id=?").get(newLoc.id)
+  if (locExists) throw new Error("❌ 位置未删")
+  console.log("  ✅ delete_location 成功")
+
+  // 8.8e) create_category + update + delete
+  const catCreateRes = await editorClient.callTool({
+    name: "create_category",
+    arguments: { spaceId: adminSpace.id, name: "MCP 测试分类", icon: "🧪" },
+  })
+  if (catCreateRes.isError) throw new Error(`❌ create_category 失败: ${textOf(catCreateRes)}`)
+  const newCat = JSON.parse(textOf(catCreateRes)) as { id: number }
+  console.log(`  ✅ create_category → id=${newCat.id}`)
+
+  const catUpdateRes = await editorClient.callTool({
+    name: "update_category",
+    arguments: { id: newCat.id, name: "MCP 测试分类（改名）" },
+  })
+  if (catUpdateRes.isError) throw new Error(`❌ update_category 失败: ${textOf(catUpdateRes)}`)
+  // 验证 icon 保留
+  const catDb = db
+    .prepare("SELECT name, icon FROM categories WHERE id=?")
+    .get(newCat.id) as { name: string; icon: string | null } | undefined
+  if (catDb?.name !== "MCP 测试分类（改名）") throw new Error("❌ name 未改")
+  if (catDb?.icon !== "🧪") throw new Error("❌ icon 应保留")
+  console.log("  ✅ update_category partial（name 改，icon 保留）")
+
+  const catDelRes = await editorClient.callTool({
+    name: "delete_category",
+    arguments: { id: newCat.id },
+  })
+  if (catDelRes.isError) throw new Error(`❌ delete_category 失败: ${textOf(catDelRes)}`)
+  console.log("  ✅ delete_category 成功")
+
+  // 8.8f) create_tag + update + delete
+  const tagCreateRes = await editorClient.callTool({
+    name: "create_tag",
+    arguments: { spaceId: adminSpace.id, name: "MCP 测试标签", color: "#ff0000" },
+  })
+  if (tagCreateRes.isError) throw new Error(`❌ create_tag 失败: ${textOf(tagCreateRes)}`)
+  const newTag = JSON.parse(textOf(tagCreateRes)) as { id: number }
+  console.log(`  ✅ create_tag → id=${newTag.id}`)
+
+  const tagUpdateRes = await editorClient.callTool({
+    name: "update_tag",
+    arguments: { id: newTag.id, name: "MCP 测试标签（改名）" },
+  })
+  if (tagUpdateRes.isError) throw new Error(`❌ update_tag 失败: ${textOf(tagUpdateRes)}`)
+  // 验证 color 保留
+  const tagDb = db
+    .prepare("SELECT name, color FROM tags WHERE id=?")
+    .get(newTag.id) as { name: string; color: string | null } | undefined
+  if (tagDb?.name !== "MCP 测试标签（改名）") throw new Error("❌ name 未改")
+  if (tagDb?.color !== "#ff0000") throw new Error("❌ color 应保留")
+  console.log("  ✅ update_tag partial（name 改，color 保留）")
+
+  const tagDelRes = await editorClient.callTool({
+    name: "delete_tag",
+    arguments: { id: newTag.id },
+  })
+  if (tagDelRes.isError) throw new Error(`❌ delete_tag 失败: ${textOf(tagDelRes)}`)
+  console.log("  ✅ delete_tag 成功")
+
+  // 8.8g) items partial update：只传 name，其他字段保留
+  const itemUpdateRes = await editorClient.callTool({
+    name: "update_item",
+    arguments: { id: 1, name: "MCP partial 测试" },
+  })
+  if (itemUpdateRes.isError) throw new Error(`❌ update_item partial 失败: ${textOf(itemUpdateRes)}`)
+  const itemDb = db
+    .prepare("SELECT name, quantity, description, category_id FROM items WHERE id=1")
+    .get() as { name: string; quantity: number; description: string | null; category_id: number | null }
+  if (itemDb.name !== "MCP partial 测试") throw new Error("❌ item.name 未改")
+  // quantity / description / category_id 应保持（partial 不动）
+  console.log(
+    `  ✅ update_item partial（name 改：${itemDb.name}，其他字段保持：qty=${itemDb.quantity}, desc=${itemDb.description}, cat=${itemDb.category_id}）`
+  )
+  // 还原 name 避免影响其他测试
+  db.prepare("UPDATE items SET name='RS2 键盘' WHERE id=1").run()
+
+  // 8.8h) reader scope 调写工具 → -32002
+  const readerCreateRes = await readerClient.callTool({
+    name: "create_location",
+    arguments: { spaceId: adminSpace.id, name: "应该被拒" },
+  })
+  if (!readerCreateRes.isError || !textOf(readerCreateRes).includes("-32002")) {
+    throw new Error(`❌ reader create_location 应被拒: ${textOf(readerCreateRes)}`)
+  }
+  console.log("  ✅ reader scope 调 create_location → -32002")
+  console.log()
+
+  // ----------------------------------------------------------
   // 【9】清理测试数据
   // ----------------------------------------------------------
   console.log("【9】清理测试数据")
@@ -609,7 +740,7 @@ async function main() {
   console.log()
 
   db.close()
-  console.log("🎉 M8.1 + M8.2 MCP Server 验收全部通过！")
+  console.log("🎉 M8.1 + M8.2 + M9 MCP Server 验收全部通过！")
 }
 
 main().catch((e) => {
