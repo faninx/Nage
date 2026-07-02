@@ -5,7 +5,9 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.4.1] - 2026-07-02
+
+PWA 支持 + Docker standalone 依赖修复 + MCP E2E CI。**0 数据库 schema 变化，0 数据迁移**。
 
 ### 新增
 
@@ -17,11 +19,19 @@
   - `scripts/build-pwa-icons.mjs` 重新生成 icon
   - **CI 影响**：`pnpm build` 加 `--webpack` flag（next-pwa 10.x 是 webpack 插件，Next 16 默认 Turbopack 冲突；docker build 自动用新命令）
 
+### 修复
+
+- **Docker standalone 启动报 `Cannot find module 'bindings'` / `file-uri-to-path'`**（cf6bdc1 / 0272667 / 9872932）
+  - 根因：`bindings` 是 `better-sqlite3` 的 transitive dep，pnpm 不 hoist 到顶层 `node_modules/`；Next.js 的 `outputFileTracingIncludes` 用 `.pnpm/` 路径在 standalone flat 结构里不可靠
+  - 修复：`Dockerfile` runtime 阶段显式 `COPY --from=deps` bindings + file-uri-to-path；`next.config.ts` 撤回不生效的 `.pnpm/` 路径规则
+
 ### CI
 
 - 新增 `.github/workflows/test-mcp.yml`：每个 push / pull_request 跑 E2E
   - 启 dev server + 跑 `scripts/test-mcp.ts` + 失败时上传 dev log artifact
   - 覆盖 11 个 section / 70+ 断言
+- `scripts/test-mcp.ts` 扩：种子基础数据（3 cat / 3 tag / 1 loc / 1 item + 1 image）+ E2E 自给自足建测试空间（CI fresh DB 不依赖现有数据）
+- `.github/workflows/docker-publish.yml` 修 `Setup Node.js` 失败（`pnpm/action-setup` + Node 24 兼容性）
 
 ### 升级指引
 

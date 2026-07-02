@@ -106,7 +106,10 @@ COPY --from=builder --chown=nage:nage /app/drizzle ./drizzle
 # 之前试过在 next.config.ts 用 outputFileTracingIncludes 配 .pnpm/ 路径，
 # 但 standalone output 仍没把 bindings 平铺到顶层 — 不可靠。
 COPY --from=deps --chown=nage:nage /app/node_modules/bindings ./node_modules/bindings
-COPY --from=deps --chown=nage:nage /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
+# file-uri-to-path 是 bindings 的 transitive dep，pnpm 不 hoist 到顶层 node_modules/，
+# 实际位置：.pnpm/bindings@<ver>/node_modules/file-uri-to-path/（symlink 指向真正目录）
+# 直接从 bindings 的 node_modules 取是最稳的（不受 pnpm dedupe 策略影响）
+COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/bindings@*/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
