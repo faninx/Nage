@@ -71,8 +71,8 @@ function CopyButton({ value }: { value: string }) {
   return (
     <Button
       type="button"
-      variant="default"
-      size="lg"
+      variant="outline"
+      size="default"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value)
@@ -85,7 +85,7 @@ function CopyButton({ value }: { value: string }) {
       }}
     >
       {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-      {copied ? "已复制" : "复制令牌"}
+      {copied ? "已复制" : "复制"}
     </Button>
   )
 }
@@ -278,26 +278,21 @@ export function McpTokensClient({ initial }: Props) {
               请立即复制并妥善保存。关闭此弹窗后将无法再次查看完整令牌。
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="rounded-md border bg-muted/50 p-3 font-mono text-xs break-all select-all">
-              {issuedToken}
-            </div>
-            {/* 复制按钮：主操作，放显眼位置 */}
-            <div className="flex items-center justify-center">
+          <div className="space-y-3">
+            {/* Token 框 + 复制按钮并排（标准模式） */}
+            <div className="flex items-stretch gap-2">
+              <div className="flex-1 rounded-md border bg-muted/50 px-3 py-2 font-mono text-xs break-all select-all min-w-0">
+                {issuedToken}
+              </div>
               {issuedToken && <CopyButton value={issuedToken} />}
             </div>
-            <div className="text-xs text-muted-foreground text-center">
+            <div className="text-xs text-muted-foreground">
               粘贴到 AI 客户端的 MCP 配置里（Authorization header 或客户端表单）。
             </div>
-            {/* 关闭按钮：次要操作，分开放 + 文字按钮（ghost）避免误点 */}
-            <div className="flex items-center justify-end pt-2 border-t">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setIssuedToken(null)}
-              >
-                我已复制，关闭
+            {/* 关闭按钮：普通按钮，放底部 */}
+            <div className="flex justify-end pt-1">
+              <Button type="button" variant="outline" onClick={() => setIssuedToken(null)}>
+                关闭
               </Button>
             </div>
           </div>
