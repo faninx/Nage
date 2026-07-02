@@ -163,6 +163,7 @@ node scripts/loader-hook.mjs              # loader 钩子调试
 - **不要硬编码 `cookie: 'nage_session=...'` 字面量到 client component**：cookie 操作只在 server side
 - **`buildTree` 不可假设 DB fetch 顺序里父先于子**（v1.2.1 critical bug）：拖动后子 `sortOrder=(i+1)*10=10` < 父 `sortOrder≥20`，`ORDER BY sortOrder,id` 把子排在父前，子遍历时父还没进 map → 子被当孤儿挂根。**必须用递归 `visit()` + `visited` set** 保证父先处理，迭代顺序不变。**DB 端从来没出错，纯粹是渲染 bug**——v1.2.0 拖过位置的实例升级后刷新就显示正确
 - **`/uploads/*` 0day 鉴权绕过**（M10 修复）：itemId 自增可枚举（`/uploads/items/1/1.jpg`）原本能直接读所有空间物品图。修复后：(1) `public/uploads/` 迁到 `data/uploads/`（脱离 public/，避免 dev 模式 Next.js 静态服务绕开 route handler）；(2) `proxy.ts` 移除 `/uploads/` 短路，让请求走到 `rewrite → /api/uploads/[...path] → 鉴权`；(3) route handler 加 `resolveMcpAuth` + `hasSpaceAccess(viewer)` 校验。MCP 客户端拿 Bearer token 取图、Web 浏览器带 cookie 取图，都得鉴权。
+- **`@ducanh2912/next-pwa@10.x` 走 webpack 插件**（M11+ / F16）：Next 16 默认 Turbopack 跟 webpack 冲突。**必须用 `next build --webpack` flag**。Docker build / pnpm build 都用此 flag（package.json scripts 已配）。`manifest.json` 不自动生成 — 必须手写放 `public/manifest.json`。
 - **不要在文件里写 emoji**（用户没要求，但 `instrumentation.ts` 启动横幅例外）
 
 ## 增量开发守则

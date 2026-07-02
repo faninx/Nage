@@ -5,6 +5,34 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [Unreleased]
+
+### 新增
+
+- **PWA 支持（F16）**：`@ducanh2912/next-pwa@10.x` + 自定义 `N` 字标图标
+  - `public/manifest.json`（name / short_name / 主题色 / 三个尺寸 icon）
+  - `public/icons/icon-{192,512,maskable-512}.png` + 源 `icon.svg`（sharp 渲染）
+  - service worker (`/sw.js`) 自动生成：仅缓存静态资源；`/api/*` 走 NetworkFirst（10s timeout）— 符合 PRD「写入需联网」
+  - `layout.tsx` 加 viewport（关 zoom + theme-color）+ apple-mobile-web-app-* + manifest link
+  - `scripts/build-pwa-icons.mjs` 重新生成 icon
+  - **CI 影响**：`pnpm build` 加 `--webpack` flag（next-pwa 10.x 是 webpack 插件，Next 16 默认 Turbopack 冲突；docker build 自动用新命令）
+
+### CI
+
+- 新增 `.github/workflows/test-mcp.yml`：每个 push / pull_request 跑 E2E
+  - 启 dev server + 跑 `scripts/test-mcp.ts` + 失败时上传 dev log artifact
+  - 覆盖 11 个 section / 70+ 断言
+
+### 升级指引
+
+```bash
+cd /opt/nage
+git pull
+docker compose pull
+docker compose up -d
+# 浏览器会提示「添加到主屏」（HTTPS 部署才有此功能）
+```
+
 ## [1.4.0] - 2026-07-02
 
 MCP Server 全套能力 + 安全加固。**新增 1 个数据库 schema（M9.1 `mcp_tokens.scope` 列）**，需要迁移 `0005_eminent_avengers.sql`（自动应用）。0 数据迁移。
