@@ -33,12 +33,16 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc* ./
 # 用 npmmirror.com（国内 CDN）替代默认 registry——默认 registry 在构建容器内下载慢到 27 KiB/s，
 # 经常 timeout；npmmirror 实测 2 MB/s
 # 强制 pnpm 装 Linux x64 的原生 binding（@img/sharp-linux-x64 / esbuild 等）。
-# 不写的话，如果 pnpm-lock.yaml 是在 Windows / macOS host 上生成的，frozen-lockfile
-# 会跟着装那个平台的 binary → Linux 容器跑起来 'Could not load sharp module'。
-# 注意：这两个 ENV 必须放在 pnpm install 之前，pnpm 才认。
+# 不写的话，如果 pnpm-lock.yaml 是在 Windows / macOS host 上生成的，会装那个
+# 平台的 binary → Linux 容器跑 'Could not load sharp module'。
+#
+# 注意：不能用 --frozen-lockfile！lockfile 是 host 生成的，可能只有 win32/darwin 的
+# optional dep 路径；frozen-lockfile 严格按 lockfile 装，platform 换了也拒绝重新 resolve。
+# 这里 drop frozen-lockfile，让 pnpm 根据 target-platform=linux 重新 resolve optional deps
+# （会把 @img/sharp-linux-x64 加进 lockfile，但 Docker 里 lockfile 改动不传回 host）。
 ENV npm_config_target_platform=linux
 ENV npm_config_target_cpu=x64
-RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked     pnpm config set registry https://registry.npmmirror.com     && pnpm install --frozen-lockfile --prefer-offline
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked     pnpm config set registry https://registry.npmmirror.com     && pnpm install --prefer-offline
 
 # ─── Stage 2: 构建 Next.js 应用 ─────────────────────────────────
 FROM node:24-bookworm-slim AS builder
