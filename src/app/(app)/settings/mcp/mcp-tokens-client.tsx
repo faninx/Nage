@@ -295,7 +295,7 @@ export function McpTokensClient({ initial }: Props) {
             {/* 关闭按钮：普通按钮，放底部 */}
             <div className="flex justify-end pt-1">
               <Button type="button" variant="outline" onClick={() => setIssuedToken(null)}>
-                关闭
+                已保存，关闭
               </Button>
             </div>
           </div>
