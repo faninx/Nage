@@ -1,4 +1,16 @@
 import type { NextConfig } from "next";
+import withPWAInit from "@ducanh2912/next-pwa";
+
+const withPWA = withPWAInit({
+  dest: "public",
+  cacheOnFrontEndNav: true,
+  aggressiveFrontEndNavCaching: true,
+  reloadOnOnline: true,
+  // 不显式设 disable：用 next-pwa 默认（仅在 production build 启用）
+  // workboxOptions 不传：next-pwa webpack plugin 走默认 precache 范围
+  // （HTML / CSS / JS / _next/static / icons / manifest）
+  // —— API 路由不缓存，命中 PRD F16「写入需联网」
+});
 
 const nextConfig: NextConfig = {
   // 启用 standalone 输出:Next.js build 时静态分析所有 import,只把 runtime 实际
@@ -46,4 +58,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withPWA(nextConfig);

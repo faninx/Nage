@@ -55,3 +55,13 @@ next-env.d.ts
 # dev-only debug scripts
 /scripts/debug-*.mjs
 /scripts/loader-hook.mjs
+
+# PWA build artifacts (next-pwa 生成，每次 build 内容不同)
+# 保留 public/icons/ 和 public/manifest.json（手写 / 重新生成）
+# 不保留 public/sw.js（workbox 生成的 service worker，含 precache hash）
+# 不保留 public/workbox-*.js / public/swe-worker-*.js（workbox runtime）
+/public/sw.js
+/public/swe-worker-*.js
+/public/workbox-*.js
+/public/workbox-*.js.map
+/public/swe-worker-*.js.map
