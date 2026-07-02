@@ -5,6 +5,32 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.2] - 2026-07-02
+
+主题修复 + Docker compose 清理。**0 数据库 schema 变化，0 数据迁移**。
+
+### 修复
+
+- **PWA 在 Android 桌面图标打开后强制 light 模式**（8299cb0）
+  - 根因：`public/manifest.json` 缺 `color_scheme` 字段（UA 默认 normal → 强制 light）
+  - 修复：manifest 加 `color_scheme: "light dark"` + `layout.tsx` viewport.themeColor 改 media-query 响应式（light=`#fafafa` / dark=`#0f172a`）
+- **PC 浏览器暗黑模式刷新跳回 light**（ca82a15，item 详情 / 成员列表尤其明显）
+  - 根因：`ThemeScript` 在 `<body>` 里，Next.js 16 生产优化器在某些页面会推迟 body 级 script 执行
+  - 修复：ThemeScript 移到 `<head>`（canonical next-themes 模式）
+- **`docker-compose.yml` `nage-uploads` 死 volume**（65442d3）：v1.4.0 M10 后 uploads 走 `data/uploads/`，compose 挂 `nage-uploads:/app/public/uploads` 失效，删掉
+- **文档 stale 引用 `public/uploads/`**（ea09f25）：DEPLOY.md / PRD.md / CLAUDE.md / README.md 同步到 `data/uploads/`
+
+### 升级指引
+
+```bash
+cd /opt/nage
+git fetch origin
+git checkout v1.4.2
+docker compose pull
+docker compose up -d
+# WebAPK 用户：Chrome 设置 → 应用 → Chrome → 存储 → 清除存储（manifest 改了浏览器会缓存老的）
+```
+
 ## [1.4.1] - 2026-07-02
 
 PWA 支持 + Docker standalone 依赖修复 + MCP E2E CI。**0 数据库 schema 变化，0 数据迁移**。
