@@ -81,7 +81,15 @@
 
 ## 工具列表
 
-8 个工具，全部需要传 `spaceId`（空间隔离）。
+**18 个工具**，全部需要传 `spaceId`（空间隔离，除了 `list_spaces`）。
+
+### 空间工具
+
+| 工具 | 用途 | 必填参数 |
+|---|---|---|
+| `list_spaces()` | 列出 caller 有访问权的所有空间（含 role / isOwner / memberCount） | （无） |
+
+> **首次连接必调** `list_spaces` 拿到 `spaceId`，否则其它工具的 `spaceId` 都不知道填几。
 
 ### Read 工具（reader + editor 都能调）
 
@@ -104,27 +112,90 @@
 
 ### Write 工具（**仅 editor**）
 
+**所有 update_* 工具都是 partial update 语义**（M9.5+）：
+- 字段不传 = 不变
+- 字段传 `null` = 清空（适用于 `description` / `unit` / `categoryId` / `locationId` / `expiredAt` / `tagIds`）
+- 字段传值 = 改
+
+**物品（items）**：
+
 | 工具 | 用途 | 必填参数 |
 |---|---|---|
 | `create_item(spaceId, name, ...)` | 新建物品 | `spaceId, name, quantity` |
-| `update_item(id, name, ...)` | 全量替换（**不是 partial update**） | `id, name, quantity` |
+| `update_item(id, name?, quantity?, ...)` | **partial update**：只改传的字段 | `id` |
 | `delete_item(id)` | 删除（不可恢复） | `id` |
 
-> ⚠️ **写工具当前是 full-replace 语义**：`update_item` 必传所有字段。partial update 留 M8.3+ 之后做。
+**位置（locations）**：
 
-**`create_item` / `update_item` 完整参数**：
+| 工具 | 用途 | 必填参数 |
+|---|---|---|
+| `create_location(spaceId, name, parentId?, description?)` | 新建位置（`parentId` 缺省 = 根） | `spaceId, name` |
+| `update_location(id, name?, parentId?, description?)` | partial update | `id` |
+| `delete_location(id)` | 删除（CASCADE 到子位置 + 清空 items.locationId） | `id` |
+
+**分类（categories）**：
+
+| 工具 | 用途 | 必填参数 |
+|---|---|---|
+| `create_category(spaceId, name, icon?)` | 新建分类（`icon` 推荐单 emoji） | `spaceId, name` |
+| `update_category(id, name?, icon?)` | partial update | `id` |
+| `delete_category(id)` | 删除（items.categoryId 置 null） | `id` |
+
+**标签（tags）**：
+
+| 工具 | 用途 | 必填参数 |
+|---|---|---|
+| `create_tag(spaceId, name, color?)` | 新建标签（`color` 推荐 hex） | `spaceId, name` |
+| `update_tag(id, name?, color?)` | partial update | `id` |
+| `delete_tag(id)` | 删除（item_tags 关联自动 CASCADE） | `id` |
+
+### partial update 示例
+
+```ts
+// 只改名：其他字段保持
+await client.callTool({
+  name: "update_item",
+  arguments: { id: 123, name: "新名字" },
+})
+
+// 改分类 + 清空位置 + 改过期时间
+await client.callTool({
+  name: "update_item",
+  arguments: {
+    id: 123,
+    categoryId: 5,
+    locationId: null,         // 清空
+    expiredAt: "2027-12-31T23:59:59.000Z",
+  },
+})
+
+// 清空所有标签关联
+await client.callTool({
+  name: "update_item",
+  arguments: { id: 123, tagIds: [] },
+})
+
+// 移动位置到根
+await client.callTool({
+  name: "update_location",
+  arguments: { id: 45, parentId: null },
+})
+```
+
+### `create_item` 完整参数（`update_item` 字段子集 + nullable）
+
 ```ts
 {
-  spaceId: number,
-  name: string,                   // 1-200 字
-  quantity: number,               // ≥1
-  description?: string,           // ≤5000 字
-  unit?: string,                  // ≤20 字
-  price?: number | null,          // ≥0，最多 2 位小数
+  spaceId: number,             // create_item 必填
+  name: string,               // 1-200 字
+  quantity: number,            // ≥1
+  description?: string,        // ≤5000 字
+  unit?: string,               // ≤20 字
+  price?: number | null,       // ≥0，最多 2 位小数
   categoryId?: number | null,
   locationId?: number | null,
-  tagIds?: number[],              // 标签 ID 数组
-  expiredAt?: string,             // ISO 8601，如 "2027-01-01T00:00:00.000Z"
+  tagIds?: number[],           // 标签 ID 数组（create 时也接受空数组）
+  expiredAt?: string,          // ISO 8601，如 "2027-01-01T00:00:00.000Z"
 }
 ```
 
@@ -351,18 +422,19 @@ caller 是 `reader` scope 但调了写工具。在 **MCP 令牌** 页删旧 toke
 
 如果你是 AI agent 要操作 Nage，**先读这段**：
 
-1. **所有工具必传 `spaceId`**。不知道是几号？先 `list_locations` / `list_tags` / `list_categories`（都不需要额外参数）拿空间元数据，但**注意它们需要 spaceId**——这是鸡生蛋。
-   - **解决**：MCP 没有"列所有空间"的工具（避免泄露）。调用方必须先有 spaceId 知识（cookie 鉴权用 `last_space_id`，Bearer 鉴权无默认）。
+1. **第一步先调 `list_spaces`** 拿 `spaceId`。其它工具都依赖 `spaceId`，但你启动时通常不知道。
 
-2. **优先用 Resources**（只读 + 有缓存语义）而不是 search_items（每次都查 DB）。
+2. **优先用 Resources**（只读 + 有缓存语义）而不是 `search_items`（每次都查 DB）。
 
-3. **先 `get_item` 后 `update_item`**——读到的数据回传更新，不要凭空构造。
+3. **`update_*` 全部是 partial**：只传想改的字段。`null` = 清空（适用于 `description` / `unit` / `categoryId` / `locationId` / `expiredAt` / `tagIds`）。比如只改名：`{ id: 1, name: "新名字" }` 就够了。
 
-4. **不要假设 item id 顺序**——用 search/list 拿 id。
+4. **先 `get_item` 后 `update_item`**——读到的数据回传更新，不要凭空构造。
 
-5. **批量操作没有现成工具**——需要循环单条调用。**注意速率限制**。
+5. **不要假设 id 顺序**——用 `search_items` / `list_*` 拿 id。
 
-6. **错误时**先看 JSON-RPC error 的 code：
+6. **批量操作没有现成工具**——循环单条调用，注意 60 req/min 速率限制。
+
+7. **错误时**先看 JSON-RPC error 的 code：
    - `-32000` → 重新拿 token
    - `-32001` → 问用户确认 spaceId
    - `-32002` → 提示用户升级到 editor token
