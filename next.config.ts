@@ -17,14 +17,21 @@ const nextConfig: NextConfig = {
   // 用到的文件 + 依赖拷贝到 .next/standalone/,而不是把整个 node_modules 拖进镜像。
   // 估算可省 200-300 MB(node_modules ~656MB → ~100-150MB)。
   output: "standalone",
-  // sharp / better-sqlite3 是原生模块,Next.js 静态分析追踪不到 native binding,
+  // sharp / better-sqlite3 / bindings 是原生模块,Next.js 静态分析追踪不到 native binding,
   // 必须手动声明才会被包含进 standalone 输出,否则启动时报找不到模块。
+  // 注意：之前 ./node_modules/bindings/**/* 不生效 — pnpm 把 dependencies 装到 .pnpm/ 下,
+  // 但顶层 node_modules/<name> 是符号链接 (symlink) 到 .pnpm/<name>@x.y.z/node_modules/<name>。
+  // outputFileTracingIncludes 似乎不 hoist 符号链接目标。
+  // 解决：让 pnpm 把依赖平铺到顶层（hoist=true），然后用顶层路径引用。
+  // 或者直接复制需要的 .pnpm 目录：
   outputFileTracingIncludes: {
     "/": [
       "./node_modules/sharp/**/*",
       "./node_modules/@img/**/*",
       "./node_modules/better-sqlite3/**/*",
-      "./node_modules/bindings/**/*",
+      // bindings 实际位于 .pnpm/bindings@1.5.0/node_modules/bindings/；
+      // 显式 include 它的所有内容
+      "./node_modules/.pnpm/bindings@1.5.0/**/*",
     ],
   },
   // Server Action 接收的请求体大小上限。Next.js 默认 1MB,上传图片必超。

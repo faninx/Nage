@@ -98,6 +98,15 @@ COPY --from=builder --chown=nage:nage /app/scripts ./scripts
 # drizzle 迁移(bootstrap 启动时跑 migrate 建表)
 COPY --from=builder --chown=nage:nage /app/drizzle ./drizzle
 
+# ─── 补充 Next.js outputFileTracingIncludes 漏掉的 transitive deps ───
+# better-sqlite3 依赖 `bindings`（require('bindings') 加载 .node binding），pnpm 不把
+# transitive deps hoist 到顶层 node_modules/，所以 Next 的 tracing 抓不到 → Docker 启动
+# 报 'Cannot find module bindings'。bindings 又依赖 file-uri-to-path。
+# 显式从 deps 阶段拷贝（从 pnpm 安装目录平铺进 standalone 的 node_modules/）。
+# 之前试过在 next.config.ts 用 outputFileTracingIncludes 配 .pnpm/ 路径，
+# 但 standalone output 仍没把 bindings 平铺到顶层 — 不可靠。
+COPY --from=deps --chown=nage:nage /app/node_modules/bindings ./node_modules/bindings
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
