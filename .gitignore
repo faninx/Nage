@@ -43,9 +43,10 @@ yarn-error.log*
 next-env.d.ts
 
 # nage runtime data
+# /data 包含 sqlite DB（nage.db）+ uploads（M10 起移到 data/ 防 dev 模式泄露未鉴权图）
 /data
+# 旧路径已弃用（uploads 移到 data/uploads），保留这一行防老 git 历史里有遗留
 /public/uploads/*
-!/public/uploads/.gitkeep
 
 
 # claude code (per-developer)

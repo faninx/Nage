@@ -15,13 +15,16 @@ export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // 放行静态资源和 Next 内部
+  // 注意：uploads/ 不在这里放行——它走 next.config.ts 的 rewrite → /api/uploads/[...path] route handler
+  // 鉴权由 route handler 自己处理（cookie + Bearer + 空间级 hasSpaceAccess）
+  // 之前的 "uploads/ 弱鉴权" 假设是错的（itemId 自增可枚举）
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     pathname === "/manifest.json" ||
     pathname === "/robots.txt" ||
-    pathname.startsWith("/uploads/") ||
-    pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?)$/)
+    (pathname.match(/\.(svg|png|jpg|jpeg|gif|webp|ico|css|js|woff2?)$/) &&
+      !pathname.startsWith("/uploads/"))
   ) {
     return NextResponse.next()
   }

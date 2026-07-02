@@ -32,7 +32,10 @@ async function userAccessToItemEdit(
   return hasSpaceAccess(userId, row.spaceId, "editor")
 }
 
-/** 把单张图保存到 public/uploads/items/{itemId}/{timestamp}-{rand}.jpg。返回相对路径 `/uploads/items/...` 与字节数。 */
+/** 把单张图保存到 data/uploads/items/{itemId}/{timestamp}-{rand}.jpg。返回相对路径 `/uploads/items/...` 与字节数。
+ *  注意：M10 起从 public/uploads 迁到 data/uploads，避免 Next.js dev 模式从 public/ 静态服务
+ *  导致鉴权失效（itemId 自增可枚举的 0day）。Route handler /api/uploads/[...path] 现在
+ *  能可靠地拦下所有 /uploads/* 请求。 */
 async function saveItemImage(
   itemId: number,
   file: File
@@ -42,7 +45,7 @@ async function saveItemImage(
   }
   const buf = Buffer.from(await file.arrayBuffer())
   const relDir = path.join("uploads", "items", String(itemId))
-  const absDir = path.join(process.cwd(), "public", relDir)
+  const absDir = path.join(process.cwd(), "data", relDir)
   await mkdir(absDir, { recursive: true })
 
   // filename 完全跟 sortOrder 解耦，用 timestamp + random 避免跟任何现有 path 冲突

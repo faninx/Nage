@@ -732,6 +732,89 @@ async function main() {
   console.log()
 
   // ----------------------------------------------------------
+  // 【8.9】M10 安全：uploads 鉴权（图片路由）
+  // 找第一个有图 item 测图（item 137 已知有图）
+  // ----------------------------------------------------------
+  console.log("【8.9】M10 uploads 鉴权")
+  const imgItem = db
+    .prepare("SELECT id, space_id FROM items WHERE EXISTS (SELECT 1 FROM item_images WHERE item_id = items.id) ORDER BY id LIMIT 1")
+    .get() as { id: number; space_id: number } | undefined
+  if (!imgItem) throw new Error("❌ 测试数据：没有带图的 item（先跑 db:seed？）")
+  const imgPath = `/uploads/items/${imgItem.id}/1.jpg`
+  console.log(`  测试图：item ${imgItem.id} (space ${imgItem.space_id}) → ${imgPath}`)
+
+  // 用 Node http 直接测（不走 MCP 客户端；目的是验 HTTP 路由鉴权）
+  const http = require("node:http")
+  function httpGet(
+    path: string,
+    headers: Record<string, string> = {}
+  ): Promise<{ status: number }> {
+    return new Promise((resolve, reject) => {
+      const req = http.get(
+        `http://localhost:3000${path}`,
+        { headers },
+        (res: import("node:http").IncomingMessage) => {
+          res.resume()
+          resolve({ status: res.statusCode ?? 0 })
+        }
+      )
+      req.on("error", reject)
+    })
+  }
+  // 准备 token
+  const adminBearerUpload = makeBearer(admin.id, "e2e_admin_bearer", "editor")
+  const adminBearerTok = adminBearerUpload.token
+  const adminSessionCookie = await makeCookie(admin.id, admin.username, "admin")
+  // alice 不属 space 1 → 跨空间测试用
+  const aliceCookie = await makeCookie(alice.id, alice.username, "member")
+
+  // 1. 无 auth → 401
+  const imgR1 = await httpGet(imgPath)
+  if (imgR1.status !== 401) throw new Error(`❌ 无 auth 应 401，实际 ${imgR1.status}`)
+  console.log("  ✅ 无 auth → 401")
+
+  // 2. 错 Bearer → 401
+  const imgR2 = await httpGet(imgPath, {
+    Authorization: "Bearer nage_mcp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  })
+  if (imgR2.status !== 401) throw new Error(`❌ 错 Bearer 应 401，实际 ${imgR2.status}`)
+  console.log("  ✅ 错 Bearer → 401")
+
+  // 3. admin session cookie → 200
+  const imgR3 = await httpGet(imgPath, { Cookie: adminSessionCookie })
+  if (imgR3.status !== 200) throw new Error(`❌ admin cookie 应 200，实际 ${imgR3.status}`)
+  console.log("  ✅ admin cookie → 200")
+
+  // 4. admin Bearer token → 200
+  const imgR4 = await httpGet(imgPath, { Authorization: `Bearer ${adminBearerTok}` })
+  if (imgR4.status !== 200) throw new Error(`❌ admin Bearer 应 200，实际 ${imgR4.status}`)
+  console.log("  ✅ admin Bearer token → 200")
+
+  // 5. alice cookie（不属该空间）→ 403
+  const imgR5 = await httpGet(imgPath, { Cookie: aliceCookie })
+  if (imgR5.status !== 403) throw new Error(`❌ alice cookie 应 403，实际 ${imgR5.status}`)
+  console.log("  ✅ alice cookie（非空间成员）→ 403")
+
+  // 6. 不存在 itemId → 404
+  const imgR6 = await httpGet("/uploads/items/999999/1.jpg", { Cookie: adminSessionCookie })
+  if (imgR6.status !== 404) throw new Error(`❌ 不存在 itemId 应 404，实际 ${imgR6.status}`)
+  console.log("  ✅ 不存在 itemId → 404")
+
+  // 7. 非 items 路径 → 404
+  const imgR7 = await httpGet("/uploads/avatars/1/x.jpg", { Cookie: adminSessionCookie })
+  if (imgR7.status !== 404) throw new Error(`❌ 非 items 路径应 404，实际 ${imgR7.status}`)
+  console.log("  ✅ 非 items 路径 → 404")
+
+  // 8. path traversal → 404
+  const imgR8 = await httpGet("/uploads/items/../etc/passwd", { Cookie: adminSessionCookie })
+  if (imgR8.status !== 404) throw new Error(`❌ path traversal 应 404，实际 ${imgR8.status}`)
+  console.log("  ✅ path traversal → 404")
+
+  // 清理
+  db.prepare("DELETE FROM mcp_tokens WHERE name='e2e_admin_bearer'").run()
+  console.log()
+
+  // ----------------------------------------------------------
   // 【9】清理测试数据
   // ----------------------------------------------------------
   console.log("【9】清理测试数据")

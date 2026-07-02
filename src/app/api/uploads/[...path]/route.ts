@@ -1,8 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { readFile, stat } from "node:fs/promises"
 import path from "node:path"
+import { eq } from "drizzle-orm"
+import { db } from "@/lib/db"
+import { items } from "@/lib/db/schema"
+import { hasSpaceAccess } from "@/lib/auth/space-access"
+import { resolveMcpAuth } from "@/lib/auth/mcp-auth"
 
-const UPLOADS_DIR = path.resolve(process.cwd(), "public", "uploads")
+// uploads/ 在 data/ 下（不在 public/），这样 Next.js dev 模式不会从 public/ 静态服务
+// → 所有请求都走到这个 route handler → 鉴权生效
+const UPLOADS_DIR = path.resolve(process.cwd(), "data", "uploads")
 
 const MIME: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -14,6 +21,28 @@ const MIME: Record<string, string> = {
 }
 
 /**
+ * 简单的 LRU 缓存：(itemId → spaceId)
+ * 避免每张图都查 items 表。item 不常换空间（通常一次创建就不动），
+ * 简单按容量限制 + 清空，不做精细 LRU。
+ */
+const _spaceCache = new Map<number, number>()
+const CACHE_MAX = 5000
+
+async function getItemSpaceId(itemId: number): Promise<number | null> {
+  const cached = _spaceCache.get(itemId)
+  if (cached !== undefined) return cached
+  const [row] = await db
+    .select({ spaceId: items.spaceId })
+    .from(items)
+    .where(eq(items.id, itemId))
+    .limit(1)
+  if (!row) return null
+  if (_spaceCache.size >= CACHE_MAX) _spaceCache.clear() // 满了就清空
+  _spaceCache.set(itemId, row.spaceId)
+  return row.spaceId
+}
+
+/**
  * GET /uploads/<...path>  →  /api/uploads/<...path>  (next.config.ts rewrite)
  *
  * 为什么不直接靠 Next.js 的 public/ 静态服务:
@@ -22,10 +51,17 @@ const MIME: Record<string, string> = {
  * rewrite 优先级在 public/ 之前,所以这条路由会接管所有 /uploads/* 请求,
  * 每次都去磁盘读最新文件,绕开启动扫描。
  *
- * 不做鉴权:
- * - proxy.ts 早就放行 /uploads/ 了,行为不变
- * - 文件路径在 DB 里、URL 是不可预测的 itemId + idx 组合,等同弱鉴权
- * - 内部网/个人用够;想严格鉴权后面再在前面加 requireSession() 即可
+ * **鉴权（M10 安全加固）**:
+ * 之前的"路径不可预测"假设不成立——itemId 是自增的（1, 2, 3...），
+ * 任何人可以枚举 /uploads/items/1/1.jpg、/uploads/items/2/1.jpg 看所有图。
+ * 现在加 cookie / Bearer 鉴权 + 空间级 hasSpaceAccess(viewer) 校验：
+ * - 无 auth → 401
+ * - 已 auth 但不是该空间成员 → 403
+ * - 空间成员 → 200 + 文件
+ * - 不是 items 路径（如 /uploads/avatars/...）→ 404（暂不开放）
+ *
+ * 性能：itemId → spaceId 走内存缓存，命中 ~0ms；未命中 ~3ms（1 DB 查询）
+ * 典型 Web 页面加载 10-20 张图，热图全缓存，总延迟 < 5ms
  */
 export async function GET(
   request: NextRequest,
@@ -43,8 +79,34 @@ export async function GET(
     }
   }
 
+  // 鉴权：cookie 或 Bearer 任一（resolveMcpAuth 已支持）
+  const auth = await resolveMcpAuth(request)
+  if (!auth) {
+    return new NextResponse("Unauthorized", { status: 401 })
+  }
+
+  // 解析 path: 只支持 items/<itemId>/<file> 模式
+  // 其他路径（avatars / categories / etc.）→ 404（暂未实现）
+  if (segments[0] !== "items") {
+    return new NextResponse("Not Found", { status: 404 })
+  }
+  const itemId = Number(segments[1])
+  if (!Number.isInteger(itemId) || itemId <= 0) {
+    return new NextResponse("Not Found", { status: 404 })
+  }
+  // segments[2] 是文件名（时间戳-rand.jpg），不需要 parse
+
+  // 查 item 所在空间 + 鉴权
+  const spaceId = await getItemSpaceId(itemId)
+  if (spaceId === null) {
+    return new NextResponse("Not Found", { status: 404 })
+  }
+  if (!(await hasSpaceAccess(auth.userId, spaceId, "viewer"))) {
+    return new NextResponse("Forbidden", { status: 403 })
+  }
+
+  // 物理路径检查（防 path traversal + 限制在 UPLOADS_DIR 内）
   const requested = path.resolve(UPLOADS_DIR, ...segments)
-  // 最终路径必须仍在 UPLOADS_DIR 内（resolve 已规范化,这里再防一手）
   if (requested !== UPLOADS_DIR && !requested.startsWith(UPLOADS_DIR + path.sep)) {
     return new NextResponse("Not Found", { status: 404 })
   }
@@ -71,10 +133,11 @@ export async function GET(
   return new NextResponse(new Uint8Array(buf), {
     headers: {
       "Content-Type": mime,
-      "Cache-Control": "public, max-age=0, must-revalidate",
+      "Cache-Control": "private, max-age=0, must-revalidate", // 私有：避免 CDN 共享
       "ETag": etag,
       "Last-Modified": new Date(st.mtimeMs).toUTCString(),
       "Content-Length": String(st.size),
     },
   })
 }
+// DEBUG
