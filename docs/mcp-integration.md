@@ -415,6 +415,11 @@ caller 是 `reader` scope 但调了写工具。在 **MCP 令牌** 页删旧 toke
 - 空间成员：无限（实际受 SQLite 性能限制）
 - 导出格式：JSON（应用内导入/导出用，跟 MCP 工具返回值结构一致）
 - 数据库：单文件 SQLite（`data/nage.db`）
+- 上传文件：`data/uploads/`（M10 起从 public/ 迁出；不在静态服务范围）
+- **图片 URL 需鉴权**（M10）：`/uploads/items/<id>/<idx>.jpg` 也需要 cookie 或 Bearer + viewer 权限
+  - AI agent 想看图：直接 `fetch(url, { headers: { Authorization: 'Bearer nage_mcp_...' } })`
+  - Web 浏览器：自动带 cookie，无需额外处理
+  - 未授权 → 401；非空间成员 → 403；不存在 → 404；非 items 路径 → 404
 
 ---
 
