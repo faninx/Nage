@@ -113,6 +113,9 @@ COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/bindings@*/node_modul
 # detect-libc 是 sharp 的 transitive dep，同理不 hoist。访问 /settings/mcp 等用 sharp
 # 处理图片缩略图的页面会报 'Cannot find module detect-libc'。
 COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/detect-libc@*/node_modules/detect-libc ./node_modules/detect-libc
+# semver 是 sharp 的 transitive dep，sharp/libvips.js 走 sub-path require
+# （semver/functions/coerce 等），跟 detect-libc 同根因。直接 COPY sharp 用的版本（7.8.3）。
+COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/semver@7.8.3/node_modules/semver ./node_modules/semver
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
