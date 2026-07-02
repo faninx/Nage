@@ -20,6 +20,11 @@ import {
   mcpDeleteItem,
   mcpUpdateItem,
 } from "@/lib/mcp/items-actions"
+import {
+  mcpCreateLocation,
+  mcpDeleteLocation,
+  mcpUpdateLocation,
+} from "@/lib/mcp/locations-actions"
 
 type McpToolResult = {
   content: [{ type: "text"; text: string }]
@@ -171,6 +176,70 @@ export const DeleteItemTool = {
     const guard = requireEditor()
     if (!guard.ok) return fail(guard.error)
     const result = await mcpDeleteItem(guard.userId, { id: args.id })
+    if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
+    return ok(result.data)
+  },
+}
+
+// ============================================================
+// create_location / update_location / delete_location（M9.2）
+// ============================================================
+
+const CreateLocationMcpSchema = z.object({
+  spaceId: z.coerce.number().int().positive(),
+  name: z.string().min(1).max(200),
+  parentId: z.coerce.number().int().positive().nullable().optional(),
+  description: z.string().max(1000).optional(),
+})
+
+export const CreateLocationTool = {
+  name: "create_location",
+  description:
+    "Create a location in a space. Requires editor scope. parentId optional (omit = root). Returns {id} on success.",
+  inputSchema: CreateLocationMcpSchema,
+  handler: async (args: z.infer<typeof CreateLocationMcpSchema>): Promise<McpToolResult> => {
+    const guard = requireEditor()
+    if (!guard.ok) return fail(guard.error)
+    const result = await mcpCreateLocation(guard.userId, args)
+    if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
+    return ok(result.data)
+  },
+}
+
+const UpdateLocationMcpSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  name: z.string().min(1).max(200).optional(),
+  parentId: z.coerce.number().int().positive().nullable().optional(), // null = move to root
+  description: z.string().max(1000).optional(),
+})
+
+export const UpdateLocationTool = {
+  name: "update_location",
+  description:
+    "Partial update a location by id. Only fields provided are changed. parentId null = move to root. Requires editor scope.",
+  inputSchema: UpdateLocationMcpSchema,
+  handler: async (args: z.infer<typeof UpdateLocationMcpSchema>): Promise<McpToolResult> => {
+    const guard = requireEditor()
+    if (!guard.ok) return fail(guard.error)
+    const result = await mcpUpdateLocation(guard.userId, args)
+    if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
+    return ok(result.data)
+  },
+}
+
+const DeleteLocationMcpSchema = z.object({
+  id: z.coerce.number().int().positive(),
+})
+
+export const DeleteLocationTool = {
+  name: "delete_location",
+  description:
+    "Delete a location by id. Cascades to sub-locations and clears items.locationId (FK CASCADE). Requires editor scope.",
+  inputSchema: DeleteLocationMcpSchema,
+  handler: async (args: z.infer<typeof DeleteLocationMcpSchema>): Promise<McpToolResult> => {
+    const guard = requireEditor()
+    if (!guard.ok) return fail(guard.error)
+    const result = await mcpDeleteLocation(guard.userId, { id: args.id })
     if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
     return ok(result.data)
   },

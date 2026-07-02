@@ -13,7 +13,14 @@ import {
   ListTagsTool,
   SearchItemsTool,
 } from "./read"
-import { CreateItemTool, DeleteItemTool, UpdateItemTool } from "./write"
+import {
+  CreateItemTool,
+  CreateLocationTool,
+  DeleteItemTool,
+  DeleteLocationTool,
+  UpdateItemTool,
+  UpdateLocationTool,
+} from "./write"
 
 export function registerReadTools(server: McpServer): void {
   for (const tool of [
@@ -26,6 +33,9 @@ export function registerReadTools(server: McpServer): void {
     CreateItemTool,
     UpdateItemTool,
     DeleteItemTool,
+    CreateLocationTool,
+    UpdateLocationTool,
+    DeleteLocationTool,
   ]) {
     // McpServer.registerTool 第 3 参数是 handler；
     // SDK 内部会拿 inputSchema 做 zod safeParse，handler 收到已 parse 的 args
