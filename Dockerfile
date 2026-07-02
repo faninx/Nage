@@ -110,6 +110,9 @@ COPY --from=deps --chown=nage:nage /app/node_modules/bindings ./node_modules/bin
 # 实际位置：.pnpm/bindings@<ver>/node_modules/file-uri-to-path/（symlink 指向真正目录）
 # 直接从 bindings 的 node_modules 取是最稳的（不受 pnpm dedupe 策略影响）
 COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/bindings@*/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
+# detect-libc 是 sharp 的 transitive dep，同理不 hoist。访问 /settings/mcp 等用 sharp
+# 处理图片缩略图的页面会报 'Cannot find module detect-libc'。
+COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/detect-libc@*/node_modules/detect-libc ./node_modules/detect-libc
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
