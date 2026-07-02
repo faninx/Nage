@@ -22,7 +22,8 @@ import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/
 import { createMcpServer } from "@/lib/mcp/server"
 import { resolveMcpAuth } from "@/lib/auth/mcp-auth"
 import { setCurrentMcpAuth } from "@/lib/mcp/context"
-import { RPC_ERROR } from "@/lib/mcp/errors"
+import { RPC_ERROR, rpcError } from "@/lib/mcp/errors"
+import { checkRateLimit } from "@/lib/mcp/rate-limit"
 
 export const dynamic = "force-dynamic"
 export const runtime = "nodejs"
@@ -67,6 +68,43 @@ async function handle(req: NextRequest): Promise<Response> {
       },
       { status: 401 }
     )
+  }
+
+  // 速率限制（M8.3）：鉴权通过后才限流（未鉴权不算配额）
+  const rl = checkRateLimit(auth)
+  if (!rl.allowed) {
+    // 解析 body 拿 id + method（限流响应需要正确 id；tools/call 的错误得是 result 形式）
+    let reqId: unknown = null
+    let reqMethod: string | null = null
+    try {
+      const text = await req.clone().text()
+      const parsed = JSON.parse(text)
+      reqId = parsed.id ?? null
+      reqMethod = typeof parsed.method === "string" ? parsed.method : null
+    } catch {
+      // ignore
+    }
+    const errMsg = `${RPC_ERROR.rateLimited.message}（${rl.retryAfterSec} 秒后重试）`
+    const headers = { "Retry-After": String(rl.retryAfterSec) }
+    if (reqMethod === "tools/call") {
+      // tool call 错误必须装在 result 里（SDK 不认 top-level error）
+      return NextResponse.json(
+        {
+          jsonrpc: "2.0",
+          id: reqId,
+          result: {
+            content: [{ type: "text", text: errMsg }],
+            isError: true,
+          },
+        },
+        { status: 200, headers }
+      )
+    }
+    // 协议级 error（initialize / tools/list / notifications 等）
+    return NextResponse.json(rpcError(reqId, RPC_ERROR.rateLimited, errMsg), {
+      status: 200,
+      headers,
+    })
   }
 
   // 把鉴权结果注入 context，工具 handler 通过 currentMcpAuth() 取

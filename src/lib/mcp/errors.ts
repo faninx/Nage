@@ -28,6 +28,11 @@ export const RPC_ERROR = {
     code: -32002,
     message: "此操作需要更高的 MCP token scope",
   },
+  // M8.3：per-token 速率超限
+  rateLimited: {
+    code: -32003,
+    message: "请求过于频繁，请稍后重试",
+  },
 } as const
 
 export type RpcErrorDef = (typeof RPC_ERROR)[keyof typeof RPC_ERROR]

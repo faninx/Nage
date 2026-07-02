@@ -453,6 +453,55 @@ async function main() {
   console.log()
 
   // ----------------------------------------------------------
+  // 【8.5】M8.3 速率限制（直接测 rate-limit module，不走 dev server）
+  // ----------------------------------------------------------
+  console.log("【8.5】M8.3 per-token rate limit")
+  // 单元式测：在测试进程内 import rate-limit 模块，模拟 N 次调用
+  // （限流器是 in-memory；E2E 跨进程无法 reset dev server 的窗口）
+  const { checkRateLimit, _resetRateLimitForTest, _setLimitForTest } = await import(
+    "../src/lib/mcp/rate-limit"
+  )
+  _setLimitForTest(5)
+  _resetRateLimitForTest()
+  // 构造一个 fake McpAuth（bearer 路径）
+  const fakeAuth = { userId: 999, source: "bearer", tokenId: 999 } as const
+
+  let pass = 0
+  let block = 0
+  for (let i = 0; i < 8; i++) {
+    const r = checkRateLimit(fakeAuth)
+    if (r.allowed) pass++
+    else block++
+  }
+  if (pass !== 5 || block !== 3) {
+    throw new Error(`❌ 期望 pass=5, block=3；实际 pass=${pass}, block=${block}`)
+  }
+  console.log(`  ✅ 5 次允许 + 3 次阻断（共 8 次调用，limit=5/分钟）`)
+
+  // 不同 token 独立窗口
+  const fakeAuth2 = { userId: 999, source: "bearer", tokenId: 1000 } as const
+  const r2 = checkRateLimit(fakeAuth2)
+  if (!r2.allowed) throw new Error("❌ 不同 tokenId 应有独立窗口")
+  console.log("  ✅ 不同 token 独立窗口（不被其他 token 拖累）")
+
+  // cookie 路径也独立
+  const fakeAuth3 = { userId: 999, source: "cookie" as const } as const
+  const r3 = checkRateLimit(fakeAuth3)
+  if (!r3.allowed) throw new Error("❌ cookie 路径应有独立窗口")
+  console.log("  ✅ cookie 鉴权独立窗口（不被 Bearer 拖累）")
+
+  // reset 后允许
+  _resetRateLimitForTest()
+  const r4 = checkRateLimit(fakeAuth)
+  if (!r4.allowed) throw new Error("❌ reset 后应重新允许")
+  console.log("  ✅ resetRateLimitForTest 后窗口清空")
+
+  // 还原
+  _setLimitForTest(null)
+  _resetRateLimitForTest()
+  console.log()
+
+  // ----------------------------------------------------------
   // 【9】清理测试数据
   // ----------------------------------------------------------
   console.log("【9】清理测试数据")
