@@ -188,6 +188,7 @@ node scripts/loader-hook.mjs              # loader 钩子调试
 - **Token 管理 UI**：`/settings/mcp`（顶栏头像菜单 → "MCP 令牌"）
 - **Origin 校验**（防 DNS rebinding）：无 Origin 放行；dev = localhost；prod = `PUBLIC_URL` 同源
 - **Rate limit（M8.3+）**：in-memory token-bucket per `bearer:userId:tokenId` 或 `cookie:userId`；默认 60 req/min（env `MCP_RATE_LIMIT_PER_MIN`）。限流时 `tools/call` 返回带 `isError: true` 的 result（SDK 兼容），其他方法返回 JSON-RPC error；同时 `Retry-After` 头。多 worker 部署需切到 Redis，留 M8.5+
+- **会话管理（M8.5+）**：`currentMcpAuth` 用 Node AsyncLocalStorage 隔离并发请求（多 worker 部署 / 异步场景下不再被串行调用限制）；**暂不开启 `sessionIdGenerator`**（开了要缓存 transport per sessionId，复杂度上升且 Nage 现状无 server-initiated 消息需求）。后续真要开主动通知再切换。
 - **工具**：`src/lib/mcp/tools/read.ts`（5 个 read，全部 `hasSpaceAccess(uid, sid, "viewer")`）
 - **写工具（M8.2+）**：`src/lib/mcp/tools/write.ts`（3 个 write：create_item / update_item / delete_item；require `editor` scope；full-replace 语义 update 必传所有字段）
 - **鉴权解析**：`src/lib/auth/mcp-auth.ts`（Bearer 优先，fallback cookie）

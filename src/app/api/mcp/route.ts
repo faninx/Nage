@@ -21,7 +21,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"
 import { createMcpServer } from "@/lib/mcp/server"
 import { resolveMcpAuth } from "@/lib/auth/mcp-auth"
-import { setCurrentMcpAuth } from "@/lib/mcp/context"
+import { runWithMcpAuth } from "@/lib/mcp/context"
 import { RPC_ERROR, rpcError } from "@/lib/mcp/errors"
 import { checkRateLimit } from "@/lib/mcp/rate-limit"
 
@@ -107,10 +107,14 @@ async function handle(req: NextRequest): Promise<Response> {
     })
   }
 
-  // 把鉴权结果注入 context，工具 handler 通过 currentMcpAuth() 取
-  setCurrentMcpAuth(auth)
-
   // 每个请求新建 server + transport（stateless 强制）
+  //
+  // M8.5 决策：暂不开启 sessionIdGenerator。
+  // - 开 session 模式需要 transport 跨请求存活（否则 SDK Client 第二次请求报
+  //   "Server not initialized"），需要 Map<sessionId, transport> 缓存，复杂度上升
+  // - Nage 现状没有 server-initiated 消息 / 资源订阅等需要 session 的高级能力
+  // - 后续真要开（如 server-sent notifications 给 MCP client 主动推过期提醒），
+  //   再加 transport 缓存 + `sessionIdGenerator: () => randomUUID()`
   const server = createMcpServer()
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
@@ -119,9 +123,9 @@ async function handle(req: NextRequest): Promise<Response> {
 
   try {
     await server.connect(transport)
-    return await transport.handleRequest(req)
+    // 用 AsyncLocalStorage 包住 handleRequest；tool/resource/prompt callback 在 ALS 上下文里跑
+    return await runWithMcpAuth(auth, () => transport.handleRequest(req))
   } finally {
-    setCurrentMcpAuth(null)
     try {
       await transport.close()
     } catch {
