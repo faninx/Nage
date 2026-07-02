@@ -106,6 +106,7 @@ COPY --from=builder --chown=nage:nage /app/drizzle ./drizzle
 # 之前试过在 next.config.ts 用 outputFileTracingIncludes 配 .pnpm/ 路径，
 # 但 standalone output 仍没把 bindings 平铺到顶层 — 不可靠。
 COPY --from=deps --chown=nage:nage /app/node_modules/bindings ./node_modules/bindings
+COPY --from=deps --chown=nage:nage /app/node_modules/file-uri-to-path ./node_modules/file-uri-to-path
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
