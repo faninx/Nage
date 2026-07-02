@@ -35,8 +35,7 @@
 
 | 容器内路径 | volume 名 | 内容 |
 |------------|-----------|------|
-| `/app/data` | `nage-data` | SQLite 数据库 |
-| `/app/public/uploads` | `nage-uploads` | 用户上传的图片 |
+| `/app/data` | `nage-data` | SQLite 数据库 + 用户上传的图片（在 `data/uploads/` 子目录，v1.4.0 M10 安全修复后合并） |
 | `/app/backups` | `nage-backups` | 定时备份 |
 
 ---
@@ -449,7 +448,7 @@ docker compose up -d
 
 ### 7.7 上传图片保存后 404 / 一直是旧图
 
-物品详情 / 列表里图片是破的，浏览器 DevTools 看到 `/uploads/items/<id>/<idx>.jpg` 返回 404，但 `docker exec nage-app ls /app/public/uploads/items/<id>/` 明明能看见文件。
+物品详情 / 列表里图片是破的，浏览器 DevTools 看到 `/uploads/items/<id>/<idx>.jpg` 返回 404，但 `docker exec nage-app ls /app/data/uploads/items/<id>/` 明明能看见文件（v1.4.0 前路径是 `/app/public/uploads/`，见下）。
 
 **根因**：Next.js 16 (Turbopack) production server 启动时**一次性**扫 `public/` 建文件清单，**启动后新加的文件不被服务**。这是 Next.js 16 + Turbopack 的已知行为（dev 模式没问题，prod 才暴露）。E2E 脚本不走这条路径所以一直没测出来。
 

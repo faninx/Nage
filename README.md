@@ -112,7 +112,7 @@ src/
     ui/                   # shadcn 组件
     layout/               # 顶栏、侧栏、Tab、FAB
 data/nage.db              # SQLite（gitignore）
-public/uploads/           # 用户上传图片
+data/uploads/             # 用户上传图片（v1.4.0 M10 后从 public/uploads/ 迁出）
 scripts/                  # E2E 测试 + 备份/恢复
 ```
 

@@ -179,7 +179,7 @@ borrow_records (id, item_id, borrower, borrowed_at, expected_return_at, returned
 | ORM | **Drizzle ORM** | 轻量、SQL 友好、类型推导强；比 Prisma 启动快 |
 | 鉴权 | **jose**（JWT）+ **bcryptjs** | 无 NextAuth 复杂度，自己掌控 |
 | 状态 | React Server Components 为主，**zustand** 仅用于少量客户端状态 | 尽量少客户端 JS |
-| 图片 | 本地 `public/uploads/`，**sharp** 压缩 | 服务端处理 |
+| 图片 | 本地 `data/uploads/`（v1.4.0 M10 安全修复后从 `public/uploads/` 迁出），**sharp** 压缩 | 服务端处理 |
 | 二维码 | **`qrcode`**（生成 PNG） + **`jsqr`**（移动端扫码） | |
 | 部署 | **Docker**（推荐） / 裸机 `pnpm start` | 自带反代（Nginx/Caddy/Traefik/Cloudflare Tunnel 任选）；HTTPS 自己管 |
 
@@ -236,7 +236,7 @@ borrow_records (id, item_id, borrower, borrowed_at, expected_return_at, returned
 | 项 | 目标 |
 |---|---|
 | 启动 | `pnpm install && pnpm db:push && pnpm dev`；生产 `pnpm build && pnpm start` |
-| 数据备份 | 复制 `data/nage.db` + `public/uploads/` 即可；同时支持应用内 JSON 全量导出 |
+| 数据备份 | 备份 `data/` 整个目录（包含 `nage.db` + `data/uploads/`）即可；同时支持应用内 JSON 全量导出 |
 | 性能 | 1 万条物品下搜索响应 < 200ms |
 | 安全 | 密码 bcrypt（cost=12）；登录失败 5 次锁 10 分钟；JWT 有效期 7 天，httpOnly cookie；HTTPS 必须（公网部署） |
 | 浏览器 | Chrome / Safari / Edge 近 2 年版本 |
