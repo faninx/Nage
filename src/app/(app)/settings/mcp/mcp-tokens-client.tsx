@@ -71,8 +71,8 @@ function CopyButton({ value }: { value: string }) {
   return (
     <Button
       type="button"
-      variant="outline"
-      size="sm"
+      variant="default"
+      size="lg"
       onClick={async () => {
         try {
           await navigator.clipboard.writeText(value)
@@ -85,7 +85,7 @@ function CopyButton({ value }: { value: string }) {
       }}
     >
       {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
-      {copied ? "已复制" : "复制"}
+      {copied ? "已复制" : "复制令牌"}
     </Button>
   )
 }
@@ -278,23 +278,27 @@ export function McpTokensClient({ initial }: Props) {
               请立即复制并妥善保存。关闭此弹窗后将无法再次查看完整令牌。
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="rounded-md border bg-muted/50 p-3 font-mono text-xs break-all select-all">
               {issuedToken}
             </div>
-            <div className="flex items-center gap-2">
+            {/* 复制按钮：主操作，放显眼位置 */}
+            <div className="flex items-center justify-center">
               {issuedToken && <CopyButton value={issuedToken} />}
+            </div>
+            <div className="text-xs text-muted-foreground text-center">
+              粘贴到 AI 客户端的 MCP 配置里（Authorization header 或客户端表单）。
+            </div>
+            {/* 关闭按钮：次要操作，分开放 + 文字按钮（ghost）避免误点 */}
+            <div className="flex items-center justify-end pt-2 border-t">
               <Button
                 type="button"
-                variant="default"
+                variant="ghost"
                 size="sm"
                 onClick={() => setIssuedToken(null)}
               >
                 我已复制，关闭
               </Button>
-            </div>
-            <div className="text-xs text-muted-foreground">
-              粘贴到 AI 客户端的 MCP 配置里（Authorization header 或客户端表单）。
             </div>
           </div>
         </DialogContent>
