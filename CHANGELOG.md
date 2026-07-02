@@ -5,6 +5,46 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.0] - 2026-07-02
+
+MCP Server 全套能力 + 安全加固。**新增 1 个数据库 schema（M9.1 `mcp_tokens.scope` 列）**，需要迁移 `0005_eminent_avengers.sql`（自动应用）。0 数据迁移。
+
+### 新增 (MCP)
+
+- **M8.1 — MCP Server 只读 MVP**：`/api/mcp` Streamable HTTP + Bearer token 双轨鉴权（cookie + `nage_mcp_<43 chars>`）+ 5 个读工具（`list_locations` / `list_categories` / `list_tags` / `search_items` / `get_item`）+ Settings UI 管理令牌
+- **M8.2 — 写工具 + Scope 二档**：`create_item` / `update_item` / `delete_item`（需 `editor` scope）+ `mcp_tokens.scope` 列（`reader` / `editor`）
+- **M8.3 — Per-token 速率限制**：默认 60 req/min/token（env `MCP_RATE_LIMIT_PER_MIN` 可配），cookie / Bearer 独立窗口
+- **M8.4 — Resources + Prompts**：4 个 resource template（`nage://items/{id}` + 3 个 `nage://spaces/{sid}/*`）+ 3 个 prompt（`audit_expiring_soon` / `find_item` / `inventory_summary`）
+- **M8.5 — AsyncLocalStorage 会话上下文**：为多 worker / 异步并发安全打基础；暂不开 `sessionIdGenerator`（stateless 设计够用）
+- **M9.1 — `list_spaces` 工具**：列出 caller 有访问权的所有空间（含 role / isOwner / ownerNickname / memberCount）—— 解决 Bearer 鉴权下"鸡生蛋"问题
+- **M9.2 / M9.3 / M9.4 — location / category / tag CRUD**：各 3 个工具（create / update / delete）。`update_*` 全部支持 **partial update 语义**（缺字段=不变；显式 `null`=清空；显式值=改）
+- **M9.5 — `update_item` 改 partial update**：原本 full-replace，现在 PATCH 语义
+
+### 安全修复（M10）
+
+- **`/uploads/*` 0day 鉴权绕过**（itemId 自增可枚举 → 任何人能看所有空间物品图）
+  - 修复：`public/uploads/` 迁到 `data/uploads/`（dev 模式 Next.js 不再静态服务绕开 route handler）
+  - `proxy.ts` 移除 `/uploads/` 短路，让请求走到 `rewrite → /api/uploads/[...path]`
+  - route handler 加 `resolveMcpAuth` + `hasSpaceAccess(viewer)` 校验
+  - `(itemId → spaceId)` LRU 缓存（5000 条上限，满了清空）
+  - `Cache-Control: private`（避免 CDN 共享泄露）
+
+### 文档
+
+- `docs/mcp-integration.md` 完整接入文档（30 秒接入 + 鉴权 + 工具参考 + Resources/Prompts + 错误码 + 客户端配置 + 速查卡）
+- `docs/releases/RELEASE-NOTES-v1.4.0.md` 完整发布说明
+
+### 升级指引
+
+```bash
+cd /opt/nage
+git pull
+docker compose pull
+docker compose up -d
+# 数据迁移：bootstrap.ts 自动跑 migrate()，0005 加 mcp_tokens.scope 列
+# 老 mcp_tokens 行的 scope 默认 'reader'，不破坏已有
+```
+
 ## [1.2.1] - 2026-06-17
 
 移动端 UX 修复 + 位置拖动 buildTree 渲染 bug。**0 数据库 schema 变化，0 数据迁移**。

@@ -8,7 +8,7 @@
 
 - **中文名**：纳格（拼音：Nà gé）
 - **英文名**：Nage
-- **版本**：v1.2.1
+- **版本**：v1.4.0
 - **栈**：Next.js 16 · React 19 · SQLite · Drizzle ORM · Tailwind v4 · shadcn/ui
 - **鉴权**：管理员模式（无公开注册，账号由管理员后台创建）
 - **部署**：Docker Compose，反代 BYO（Caddy / Nginx / Cloudflare Tunnel 任选）
