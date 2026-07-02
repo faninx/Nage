@@ -30,10 +30,9 @@ services:
       - path: ./.env
         required: true
     volumes:
-      # SQLite 数据库
+      # SQLite 数据库 + 用户上传图片（v1.4.0+ M10 安全修复后，uploads 迁到 data/uploads/
+      # 子目录，跟 DB 共享同一 volume；单独挂 uploads 反而绕过 route handler 鉴权）
       - nage-data:/app/data
-      # 用户上传图片
-      - nage-uploads:/app/public/uploads
       # 备份目录（容器内落地，外部访问通过 docker cp 或 volume 挂到主机）
       - nage-backups:/app/backups
     healthcheck:
@@ -49,7 +48,6 @@ services:
 
 volumes:
   nage-data:
-  nage-uploads:
   nage-backups:
 
 networks:
