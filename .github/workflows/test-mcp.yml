@@ -1,0 +1,108 @@
+name: E2E
+
+# 触发：每个 push / pull_request 都跑
+# 目标：PR 必过 E2E + nightly 也跑（可选）
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+# 防止多个并发 run 互相干扰数据库
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-mcp:
+    name: MCP E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare .env.local
+        run: |
+          cp .env.local.example .env.local
+          # E2E 用固定 JWT_SECRET（32+ 字符）
+          sed -i 's|JWT_SECRET=$|JWT_SECRET=e2e-test-secret-must-be-32-chars-minimum-aaaaaa|' .env.local
+          # E2E admin 账号固定
+          sed -i 's|ADMIN_USERNAME=.*|ADMIN_USERNAME=e2e_admin|' .env.local
+          sed -i 's|ADMIN_PASSWORD=.*|ADMIN_PASSWORD=E2eTest1234|' .env.local
+          cat .env.local
+
+      - name: Push DB schema
+        run: pnpm db:push
+
+      - name: Start dev server
+        env:
+          NODE_ENV: production # 关掉 Next 源码监听，让 dev 模式行为更接近 prod
+        run: |
+          # 后台启动 dev server，输出到日志
+          nohup pnpm dev > /tmp/dev.log 2>&1 &
+          DEV_PID=$!
+          echo "DEV_PID=$DEV_PID" >> $GITHUB_ENV
+          # 等 server 起来（轮询 /login 200）
+          for i in {1..60}; do
+            if curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/login | grep -q 200; then
+              echo "dev server ready after ${i}s"
+              break
+            fi
+            sleep 1
+          done
+          # 启动后多等 2s 让 lazy compile 完成
+          sleep 2
+          # 最后一次确认
+          curl -s -o /dev/null -w "Final status: %{http_code}\n" http://localhost:3000/login
+          cat /tmp/dev.log | tail -20
+
+      - name: Run MCP E2E
+        # 失败时保留 dev 日志
+        if: always()
+        run: |
+          set +e
+          node node_modules/tsx/dist/cli.mjs scripts/test-mcp.ts
+          E2E_EXIT=$?
+          echo "E2E_EXIT=$E2E_EXIT"
+          if [ $E2E_EXIT -ne 0 ]; then
+            echo "===== dev server log (last 100 lines) ====="
+            tail -100 /tmp/dev.log
+          fi
+          exit $E2E_EXIT
+
+      - name: Cleanup dev server
+        if: always()
+        run: |
+          if [ -n "$DEV_PID" ]; then
+            echo "Killing dev server (PID $DEV_PID)"
+            kill $DEV_PID 2>/dev/null || true
+            # 等 5s 优雅退出
+            sleep 5
+            # 强制杀
+            pkill -f "next dev" 2>/dev/null || true
+          fi
+
+      - name: Upload dev log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-server-log
+          path: /tmp/dev.log
+          retention-days: 3
