@@ -25,6 +25,16 @@ import {
   mcpDeleteLocation,
   mcpUpdateLocation,
 } from "@/lib/mcp/locations-actions"
+import {
+  mcpCreateCategory,
+  mcpDeleteCategory,
+  mcpUpdateCategory,
+} from "@/lib/mcp/categories-actions"
+import {
+  mcpCreateTag,
+  mcpDeleteTag,
+  mcpUpdateTag,
+} from "@/lib/mcp/tags-actions"
 
 type McpToolResult = {
   content: [{ type: "text"; text: string }]
@@ -240,6 +250,129 @@ export const DeleteLocationTool = {
     const guard = requireEditor()
     if (!guard.ok) return fail(guard.error)
     const result = await mcpDeleteLocation(guard.userId, { id: args.id })
+    if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
+    return ok(result.data)
+  },
+}
+
+// ============================================================
+// create_category / update_category / delete_category（M9.3）
+// ============================================================
+
+const CreateCategoryMcpSchema = z.object({
+  spaceId: z.coerce.number().int().positive(),
+  name: z.string().min(1).max(200),
+  icon: z.string().max(20).optional(),
+})
+
+export const CreateCategoryTool = {
+  name: "create_category",
+  description:
+    "Create a category in a space. icon optional (single emoji recommended). Requires editor scope. Returns {id} on success.",
+  inputSchema: CreateCategoryMcpSchema,
+  handler: async (args: z.infer<typeof CreateCategoryMcpSchema>): Promise<McpToolResult> => {
+    const guard = requireEditor()
+    if (!guard.ok) return fail(guard.error)
+    const result = await mcpCreateCategory(guard.userId, args)
+    if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
+    return ok(result.data)
+  },
+}
+
+const UpdateCategoryMcpSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  name: z.string().min(1).max(200).optional(),
+  icon: z.string().max(20).optional(),
+})
+
+export const UpdateCategoryTool = {
+  name: "update_category",
+  description:
+    "Partial update a category. Only provided fields are changed. Requires editor scope.",
+  inputSchema: UpdateCategoryMcpSchema,
+  handler: async (args: z.infer<typeof UpdateCategoryMcpSchema>): Promise<McpToolResult> => {
+    const guard = requireEditor()
+    if (!guard.ok) return fail(guard.error)
+    const result = await mcpUpdateCategory(guard.userId, args)
+    if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
+    return ok(result.data)
+  },
+}
+
+const DeleteCategoryMcpSchema = z.object({
+  id: z.coerce.number().int().positive(),
+})
+
+export const DeleteCategoryTool = {
+  name: "delete_category",
+  description:
+    "Delete a category. Items in this category have categoryId set to null (FK ON DELETE SET NULL). Requires editor scope.",
+  inputSchema: DeleteCategoryMcpSchema,
+  handler: async (args: z.infer<typeof DeleteCategoryMcpSchema>): Promise<McpToolResult> => {
+    const guard = requireEditor()
+    if (!guard.ok) return fail(guard.error)
+    const result = await mcpDeleteCategory(guard.userId, { id: args.id })
+    if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
+    return ok(result.data)
+  },
+}
+
+// ============================================================
+// create_tag / update_tag / delete_tag（M9.4）
+// ============================================================
+
+const CreateTagMcpSchema = z.object({
+  spaceId: z.coerce.number().int().positive(),
+  name: z.string().min(1).max(200),
+  color: z.string().max(20).optional(),
+})
+
+export const CreateTagTool = {
+  name: "create_tag",
+  description:
+    "Create a tag in a space. color optional (hex). Requires editor scope. Returns {id} on success.",
+  inputSchema: CreateTagMcpSchema,
+  handler: async (args: z.infer<typeof CreateTagMcpSchema>): Promise<McpToolResult> => {
+    const guard = requireEditor()
+    if (!guard.ok) return fail(guard.error)
+    const result = await mcpCreateTag(guard.userId, args)
+    if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
+    return ok(result.data)
+  },
+}
+
+const UpdateTagMcpSchema = z.object({
+  id: z.coerce.number().int().positive(),
+  name: z.string().min(1).max(200).optional(),
+  color: z.string().max(20).optional(),
+})
+
+export const UpdateTagTool = {
+  name: "update_tag",
+  description: "Partial update a tag. Only provided fields are changed. Requires editor scope.",
+  inputSchema: UpdateTagMcpSchema,
+  handler: async (args: z.infer<typeof UpdateTagMcpSchema>): Promise<McpToolResult> => {
+    const guard = requireEditor()
+    if (!guard.ok) return fail(guard.error)
+    const result = await mcpUpdateTag(guard.userId, args)
+    if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
+    return ok(result.data)
+  },
+}
+
+const DeleteTagMcpSchema = z.object({
+  id: z.coerce.number().int().positive(),
+})
+
+export const DeleteTagTool = {
+  name: "delete_tag",
+  description:
+    "Delete a tag. Items lose this tag association (item_tags FK CASCADE). Requires editor scope.",
+  inputSchema: DeleteTagMcpSchema,
+  handler: async (args: z.infer<typeof DeleteTagMcpSchema>): Promise<McpToolResult> => {
+    const guard = requireEditor()
+    if (!guard.ok) return fail(guard.error)
+    const result = await mcpDeleteTag(guard.userId, { id: args.id })
     if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
     return ok(result.data)
   },
