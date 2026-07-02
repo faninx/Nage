@@ -142,6 +142,11 @@ COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/semver@7.8.3/node_mod
 # 但 pnpm 把 optional dep 放 .pnpm/@img+sharp-linux-x64@*/node_modules/@img/sharp-linux-x64/，
 # 不是顶层。Dockerfile 显式 COPY 平铺到顶层 ./node_modules/@img/sharp-linux-x64 修。
 COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/@img+sharp-linux-x64@*/node_modules/@img/sharp-linux-x64 ./node_modules/@img/sharp-linux-x64
+# @img/sharp-libvips-linux-x64 是 libvips 的 .so 文件（@img/sharp-linux-x64 的 .node
+# 启动时 dlopen 它们，比如 libvips-cpp.so.8.17.3）。同理 pnpm 不 hoist。COPY .so 到
+# /usr/lib/x86_64-linux-gnu/ 让动态链接器找得到——比设 LD_LIBRARY_PATH 干净（不影响其他
+# 进程）。包是 self-contained，依赖（glib/expat 等）都静态链了，不用单独装。
+COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/@img+sharp-libvips-linux-x64@*/node_modules/@img/sharp-libvips-linux-x64/lib/ /usr/lib/x86_64-linux-gnu/
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
