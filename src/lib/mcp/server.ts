@@ -13,6 +13,8 @@
 import "server-only"
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { registerReadTools } from "./tools/index"
+import { registerResources } from "./resources"
+import { registerPrompts } from "./prompts"
 
 const SERVER_NAME = "nage"
 const SERVER_VERSION = "1.2.1" // M8.1 仍跑 v1.2.1；下次发版 bump
@@ -20,5 +22,7 @@ const SERVER_VERSION = "1.2.1" // M8.1 仍跑 v1.2.1；下次发版 bump
 export function createMcpServer(): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION })
   registerReadTools(server)
+  registerResources(server)
+  registerPrompts(server)
   return server
 }

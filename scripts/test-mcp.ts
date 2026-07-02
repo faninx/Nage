@@ -464,7 +464,7 @@ async function main() {
   _setLimitForTest(5)
   _resetRateLimitForTest()
   // 构造一个 fake McpAuth（bearer 路径）
-  const fakeAuth = { userId: 999, source: "bearer", tokenId: 999 } as const
+  const fakeAuth: import("../src/lib/auth/mcp-auth").McpAuth = { userId: 999, source: "bearer", tokenId: 999, scope: "editor" }
 
   let pass = 0
   let block = 0
@@ -479,14 +479,14 @@ async function main() {
   console.log(`  ✅ 5 次允许 + 3 次阻断（共 8 次调用，limit=5/分钟）`)
 
   // 不同 token 独立窗口
-  const fakeAuth2 = { userId: 999, source: "bearer", tokenId: 1000 } as const
+  const fakeAuth2: import("../src/lib/auth/mcp-auth").McpAuth = { userId: 999, source: "bearer", tokenId: 1000, scope: "editor" }
   const r2 = checkRateLimit(fakeAuth2)
   if (!r2.allowed) throw new Error("❌ 不同 tokenId 应有独立窗口")
   console.log("  ✅ 不同 token 独立窗口（不被其他 token 拖累）")
 
   // cookie 路径也独立
-  const fakeAuth3 = { userId: 999, source: "cookie" as const } as const
-  const r3 = checkRateLimit(fakeAuth3)
+  const fakeAuth3: import("../src/lib/auth/mcp-auth").McpAuth = { userId: 999, source: "cookie", scope: "editor" }
+  const r3 = fakeAuth3 && checkRateLimit(fakeAuth3)
   if (!r3.allowed) throw new Error("❌ cookie 路径应有独立窗口")
   console.log("  ✅ cookie 鉴权独立窗口（不被 Bearer 拖累）")
 
@@ -499,6 +499,105 @@ async function main() {
   // 还原
   _setLimitForTest(null)
   _resetRateLimitForTest()
+  console.log()
+
+  // ----------------------------------------------------------
+  // 【8.6】M8.4 Resources
+  // ----------------------------------------------------------
+  console.log("【8.6】M8.4 Resources")
+  // 8.6a) list_resource_templates 应有 4 个（全 template：sid 维度）
+  const templateList = await editorClient.listResourceTemplates()
+  const templateNames = templateList.resourceTemplates.map((t) => t.name).sort()
+  const expectedRes = ["nage_item", "nage_space_categories", "nage_space_locations", "nage_space_tags"]
+  for (const n of expectedRes) {
+    if (!templateNames.includes(n)) throw new Error(`❌ 缺 resource template: ${n}`)
+  }
+  console.log(`  ✅ listResourceTemplates 返回 ${templateNames.length} 个: ${templateNames.join(", ")}`)
+
+  // 8.6b) read nage://spaces/{sid}/locations
+  const locRead = await editorClient.readResource({ uri: `nage://spaces/${adminSpace.id}/locations` })
+  const locText = (locRead.contents[0] as { text: string }).text
+  const locArr = JSON.parse(locText) as Array<{ id: number; name: string }>
+  if (!Array.isArray(locArr) || locArr.length === 0) throw new Error("❌ locations 资源空")
+  console.log(`  ✅ nage://spaces/${adminSpace.id}/locations → ${locArr.length} 个位置`)
+
+  // 8.6c) read nage://spaces/{sid}/tags
+  const tagRead = await editorClient.readResource({ uri: `nage://spaces/${adminSpace.id}/tags` })
+  const tagArr = JSON.parse((tagRead.contents[0] as { text: string }).text) as Array<{
+    id: number
+    name: string
+  }>
+  if (!Array.isArray(tagArr) || tagArr.length === 0) throw new Error("❌ tags 资源空")
+  console.log(`  ✅ nage://spaces/${adminSpace.id}/tags → ${tagArr.length} 个标签`)
+
+  // 8.6d) read nage://items/{id}（拿一个真实 id）
+  const someItemId = (await editorClient.callTool({
+    name: "search_items",
+    arguments: { spaceId: adminSpace.id, page: 1 },
+  })).isError
+    ? 0
+    : (JSON.parse(textOf(await editorClient.callTool({
+      name: "search_items",
+      arguments: { spaceId: adminSpace.id, page: 1 },
+    }))).items?.[0]?.id ?? 0)
+  if (someItemId > 0) {
+    const itemRead = await editorClient.readResource({ uri: `nage://items/${someItemId}` })
+    const itemObj = JSON.parse((itemRead.contents[0] as { text: string }).text)
+    if (itemObj.item?.id !== someItemId) {
+      throw new Error(`❌ item 资源 id 不对: ${JSON.stringify(itemObj)}`)
+    }
+    console.log(`  ✅ nage://items/${someItemId} → name="${itemObj.item.name}"`)
+  } else {
+    console.log("  ℹ️  空间无 item，跳过 item resource 测")
+  }
+
+  // 8.6e) reader scope → 403 forbidden（验证 ACL 同样作用于 resources）
+  // 注意：reader token 已经有独立 rate window，但本测试只调 1 次不会超限
+  // 取一个能返回 403 的 URI（用 alice 的 cookie 调 admin 空间）
+  const aliceResClient = await withClient({ cookie: await makeCookie(alice.id, alice.username, "member") })
+  const aliceResForbidden = await aliceResClient.readResource({
+    uri: `nage://spaces/${adminSpace.id}/locations`,
+  })
+  const forbiddenResText = ((aliceResForbidden.contents as Array<{ text: string }>)[0])?.text ?? ""
+  if (!forbiddenResText.includes("forbidden") && !forbiddenResText.includes("无权")) {
+    throw new Error(`❌ 跨空间读 resource 应被拒: ${forbiddenResText}`)
+  }
+  console.log("  ✅ 非成员读 resource → forbidden")
+  console.log()
+
+  // ----------------------------------------------------------
+  // 【8.7】M8.4 Prompts
+  // ----------------------------------------------------------
+  console.log("【8.7】M8.4 Prompts")
+  const promptList = await editorClient.listPrompts()
+  const promptNames = promptList.prompts.map((p) => p.name).sort()
+  const expectedPrompts = ["audit_expiring_soon", "find_item", "inventory_summary"]
+  for (const n of expectedPrompts) {
+    if (!promptNames.includes(n)) throw new Error(`❌ 缺 prompt: ${n}`)
+  }
+  console.log(`  ✅ listPrompts 返回 3 个: ${promptNames.join(", ")}`)
+
+  // 8.7a) getPrompt audit_expiring_soon
+  const auditPrompt = await editorClient.getPrompt({
+    name: "audit_expiring_soon",
+    arguments: { spaceId: String(adminSpace.id), days: "7" },
+  })
+  const auditMsg = (auditPrompt.messages as Array<{ role: string; content: { text: string } }>)[0]
+  if (auditMsg?.role !== "user" || !auditMsg.content.text.includes("7 天内即将过期")) {
+    throw new Error(`❌ audit_expiring_soon 提示词不对: ${JSON.stringify(auditPrompt)}`)
+  }
+  console.log("  ✅ getPrompt(audit_expiring_soon, days=7) 拿到 7 天过期审计 prompt")
+
+  // 8.7b) getPrompt find_item
+  const findPrompt = await editorClient.getPrompt({
+    name: "find_item",
+    arguments: { spaceId: String(adminSpace.id), query: "充电宝" },
+  })
+  const findMsg = (findPrompt.messages as Array<{ role: string; content: { text: string } }>)[0]
+  if (findMsg?.role !== "user" || !findMsg.content.text.includes("充电宝")) {
+    throw new Error(`❌ find_item 提示词不对: ${JSON.stringify(findPrompt)}`)
+  }
+  console.log('  ✅ getPrompt(find_item, query="充电宝") 拿到搜索 prompt')
   console.log()
 
   // ----------------------------------------------------------
