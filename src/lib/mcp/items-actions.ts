@@ -120,14 +120,17 @@ export async function mcpUpdateItem(
   userId: number,
   raw: unknown
 ): Promise<WriteResult<{ id: number }>> {
-  const parsed = UpdateItemSchema.safeParse(raw)
-  if (!parsed.success) {
-    return { ok: false, error: parsed.error.issues[0]?.message ?? "参数错误" }
+  // Partial update：用 raw 对象判断哪些 key 显式传了；只更新传了的字段
+  // （z.optional() 区分不了 "key 缺失" 和 "key: undefined"——两者都变 undefined）
+  if (typeof raw !== "object" || raw === null) {
+    return { ok: false, error: "参数必须是对象" }
   }
-  const { id, name, description, categoryId, locationId, quantity, unit, price, tagIds, expiredAt } =
-    parsed.data
+  const r = raw as Record<string, unknown>
 
-  // 先拿 item 的 spaceId 校验权限（hasSpaceAccess 需要 sid）
+  const id = Number(r.id)
+  if (!Number.isInteger(id) || id <= 0) return { ok: false, error: "id 必填且为正整数" }
+
+  // 先拿 item 的 spaceId 校验权限
   const [row] = await db
     .select({ spaceId: items.spaceId })
     .from(items)
@@ -138,26 +141,119 @@ export async function mcpUpdateItem(
     return { ok: false, error: "无权操作该空间" }
   }
 
-  const clErr = await validateCategoryLocation(row.spaceId, categoryId ?? null, locationId ?? null)
-  if (clErr) return { ok: false, error: clErr }
+  // 构造 patch：只放显式传了的字段
+  // 注意：用 ('name' in r) 判断"是否传了"，不用 r.name !== undefined
+  const patch: Record<string, unknown> = {}
 
-  await db
-    .update(items)
-    .set({
-      name,
-      description: description || null,
-      categoryId: categoryId ?? null,
-      locationId: locationId ?? null,
-      quantity,
-      unit: unit || null,
-      price: price ?? null,
-      expiredAt: expiredAt ? sql`${Math.floor(expiredAt.getTime() / 1000)}` : null,
-      updatedAt: new Date(),
-    })
-    .where(eq(items.id, id))
+  if ("name" in r) {
+    const name = r.name
+    if (typeof name !== "string" || name.length < 1 || name.length > 200) {
+      return { ok: false, error: "name 必须是 1-200 字字符串" }
+    }
+    patch.name = name
+  }
 
-  const tagErr = await syncItemTags(id, tagIds, row.spaceId)
-  if (tagErr) return { ok: false, error: tagErr }
+  if ("description" in r) {
+    const desc = r.description
+    if (desc !== null && (typeof desc !== "string" || desc.length > 5000)) {
+      return { ok: false, error: "description 必须是字符串（≤5000）或 null" }
+    }
+    patch.description = desc === null ? null : desc || null
+  }
+
+  if ("quantity" in r) {
+    const q = Number(r.quantity)
+    if (!Number.isInteger(q) || q < 1) {
+      return { ok: false, error: "quantity 必须是 ≥1 整数" }
+    }
+    patch.quantity = q
+  }
+
+  if ("unit" in r) {
+    const u = r.unit
+    if (u !== null && (typeof u !== "string" || u.length > 20)) {
+      return { ok: false, error: "unit 必须是字符串（≤20）或 null" }
+    }
+    patch.unit = u === null ? null : u || null
+  }
+
+  if ("price" in r) {
+    const p = r.price
+    if (p === null) {
+      patch.price = null
+    } else if (typeof p === "number" && p >= 0) {
+      patch.price = p
+    } else {
+      return { ok: false, error: "price 必须是 ≥0 数字或 null" }
+    }
+  }
+
+  if ("categoryId" in r) {
+    const cid = r.categoryId
+    if (cid === null) {
+      patch.categoryId = null
+    } else {
+      const cidNum = Number(cid)
+      if (!Number.isInteger(cidNum) || cidNum <= 0) {
+        return { ok: false, error: "categoryId 必须是正整数或 null" }
+      }
+      const clErr = await validateCategoryLocation(row.spaceId, cidNum, null)
+      if (clErr) return { ok: false, error: clErr }
+      patch.categoryId = cidNum
+    }
+  }
+
+  if ("locationId" in r) {
+    const lid = r.locationId
+    if (lid === null) {
+      patch.locationId = null
+    } else {
+      const lidNum = Number(lid)
+      if (!Number.isInteger(lidNum) || lidNum <= 0) {
+        return { ok: false, error: "locationId 必须是正整数或 null" }
+      }
+      const clErr = await validateCategoryLocation(row.spaceId, null, lidNum)
+      if (clErr) return { ok: false, error: clErr }
+      patch.locationId = lidNum
+    }
+  }
+
+  if ("expiredAt" in r) {
+    const ea = r.expiredAt
+    if (ea === null || ea === "") {
+      patch.expiredAt = null
+    } else {
+      let d: Date
+      try { d = new Date(ea as string) } catch { return { ok: false, error: "expiredAt 格式错" } }
+      if (isNaN(d.getTime())) return { ok: false, error: "expiredAt 格式错" }
+      // 用 sql raw 绕 Drizzle SQLite timestamp mode 的 bug
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(patch as any).expiredAt = sql`${Math.floor(d.getTime() / 1000)}`
+    }
+  }
+
+  // 总是更新 updatedAt
+  patch.updatedAt = new Date()
+
+  // 主表 patch 应用
+  if (Object.keys(patch).length > 0) {
+    await db.update(items).set(patch).where(eq(items.id, id))
+  }
+
+  // tagIds 独立处理：传了（即使是 []）就重置；没传就保留
+  if ("tagIds" in r) {
+    const tagIdsRaw = r.tagIds
+    let tagIds: number[]
+    if (tagIdsRaw === null) {
+      tagIds = []
+    } else if (Array.isArray(tagIdsRaw)) {
+      tagIds = tagIdsRaw.map((x) => Number(x)).filter((n) => Number.isInteger(n) && n > 0)
+    } else {
+      return { ok: false, error: "tagIds 必须是数组或 null" }
+    }
+    const tagErr = await syncItemTags(id, tagIds, row.spaceId)
+    if (tagErr) return { ok: false, error: tagErr }
+  }
 
   return { ok: true, data: { id } }
 }

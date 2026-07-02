@@ -127,43 +127,27 @@ export const CreateItemTool = {
 
 const UpdateItemMcpSchema = z.object({
   id: z.coerce.number().int().positive(),
-  name: z.string().min(1).max(200),
-  description: z.string().max(5000).optional(),
+  name: z.string().min(1).max(200).optional(),
+  description: z.string().max(5000).nullable().optional(),
   categoryId: z.coerce.number().int().positive().nullable().optional(),
   locationId: z.coerce.number().int().positive().nullable().optional(),
-  quantity: z.coerce.number().int().min(1),
-  unit: z.string().max(20).optional(),
+  quantity: z.coerce.number().int().min(1).optional(),
+  unit: z.string().max(20).nullable().optional(),
   price: z.coerce.number().nonnegative().multipleOf(0.01).max(99999999.99).nullable().optional(),
-  tagIds: z.array(z.coerce.number().int().positive()).optional().default([]),
-  expiredAt: z.string().optional(),
+  tagIds: z.array(z.coerce.number().int().positive()).nullable().optional(),
+  expiredAt: z.string().nullable().optional(),
 })
 
 export const UpdateItemTool = {
   name: "update_item",
   description:
-    "Update an existing item by id. Requires editor scope. Returns {id} on success.",
+    "Partial update an item by id. Only fields provided are changed. Pass null to clear categoryId/locationId/expiredAt/description/unit. Pass [] to clear tagIds. Requires editor scope.",
   inputSchema: UpdateItemMcpSchema,
   handler: async (args: z.infer<typeof UpdateItemMcpSchema>): Promise<McpToolResult> => {
     const guard = requireEditor()
     if (!guard.ok) return fail(guard.error)
-    let expiredAt: Date | null
-    try {
-      expiredAt = parseIsoDate(args.expiredAt)
-    } catch (e) {
-      return fail(rpcError(null, { code: -32602, message: e instanceof Error ? e.message : "expiredAt 格式错误" }))
-    }
-    const result = await mcpUpdateItem(guard.userId, {
-      id: args.id,
-      name: args.name,
-      description: args.description,
-      categoryId: args.categoryId ?? null,
-      locationId: args.locationId ?? null,
-      quantity: args.quantity,
-      unit: args.unit,
-      price: args.price ?? null,
-      tagIds: args.tagIds ?? [],
-      expiredAt,
-    })
+    // 透传原始 args（保留 "key 是否传了" 的语义）
+    const result = await mcpUpdateItem(guard.userId, args)
     if (!result.ok) return fail(rpcError(null, { code: -32603, message: result.error }))
     return ok(result.data)
   },
