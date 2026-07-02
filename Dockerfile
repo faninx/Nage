@@ -134,18 +134,21 @@ COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/detect-libc@*/node_mo
 # semver 是 sharp 的 transitive dep，sharp/libvips.js 走 sub-path require
 # （semver/functions/coerce 等），跟 detect-libc 同根因。直接 COPY sharp 用的版本（7.8.3）。
 COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/semver@7.8.3/node_modules/semver ./node_modules/semver
-# @img/sharp-linux-x64 是 sharp 的 native binary（.node 文件，require 加载）。
-# pnpm 不把 optional dep hoist 到顶层 node_modules/@img/，所以 next.config.ts 的
-# ./node_modules/@img/**/* 规则匹配不到 → standalone 漏掉 → 启动报
-# 'Could not load the sharp module using the linux-x64 runtime'。
-# 注意：env npm_config_target_platform=linux 会让 pnpm 在 deps 阶段装 Linux binary，
-# 但 pnpm 把 optional dep 放 .pnpm/@img+sharp-linux-x64@*/node_modules/@img/sharp-linux-x64/，
-# 不是顶层。Dockerfile 显式 COPY 平铺到顶层 ./node_modules/@img/sharp-linux-x64 修。
-COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/@img+sharp-linux-x64@*/node_modules/@img/sharp-linux-x64 ./node_modules/@img/sharp-linux-x64
-# @img/sharp-libvips-linux-x64 是 libvips 的 .so 文件（@img/sharp-linux-x64 的 .node
-# 启动时 dlopen 它们，比如 libvips-cpp.so.8.17.3）。同理 pnpm 不 hoist。COPY .so 到
-# /usr/lib/x86_64-linux-gnu/ 让动态链接器找得到——比设 LD_LIBRARY_PATH 干净（不影响其他
-# 进程）。包是 self-contained，依赖（glib/expat 等）都静态链了，不用单独装。
+# @img/* 是 sharp 的 namespace 下所有依赖（@img/colour / sharp-linux-x64 / sharp-libvips-*）。
+# pnpm 都不 hoist 到顶层 node_modules/@img/，全部装在 .pnpm/@img+*@*/node_modules/@img/ 下。
+# next.config.ts 的 './node_modules/@img/**/*' 规则在顶层匹配不到 → standalone 漏掉。
+#
+# 之前 f05d415 只 COPY sharp-linux-x64、0101732 只 COPY libvips .so，但 0101732 之后
+# 启动又报 'Cannot find module @img/colour' —— whack-a-mole 不是办法。
+# 改成一次性 COPY 所有 @img/* runtime 包到顶层：pnpm glob 展开成 @img+colour / +sharp-* 等
+# （注意：* 不跨 /，所以能匹 @img+colour 跟 @img+sharp-* 但 @img+sharp+libvips-* 这种
+# 双 + 不会出现，因为 npm 包名合法字符不含 +，pnpm 只在第一段替换 /）。
+COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/@img+*@*/node_modules/@img /app/node_modules/@img
+# @img/sharp-libvips-linux-x64 的 .so 文件（libvips-cpp.so.8.17.3 等）需要 dlopen 找得到。
+# 上面那行把 sharp-libvips-linux-x64 也 COPY 到顶层 node_modules/@img/ 了，但 .so 在它
+# 的 lib/ 子目录里，dlopen 默认不会搜这里。COPY .so 到 /usr/lib/x86_64-linux-gnu/（debian
+# 系统 lib 目录，动态链接器默认搜这里）。比设 LD_LIBRARY_PATH 干净。包是 self-contained，
+# 依赖（glib/expat 等）都静态链了，不用单独 apt install libvips。
 COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/@img+sharp-libvips-linux-x64@*/node_modules/@img/sharp-libvips-linux-x64/lib/ /usr/lib/x86_64-linux-gnu/
 
 ENV NODE_ENV=production
