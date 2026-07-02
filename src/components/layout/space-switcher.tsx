@@ -1,7 +1,7 @@
 "use client"
 
 import { useTransition, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +33,7 @@ type Props = {
 
 export function SpaceSwitcher({ spaces, currentSpaceId }: Props) {
   const router = useRouter()
+  const pathname = usePathname()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const current = spaces.find((s) => s.id === currentSpaceId) ?? spaces[0]
@@ -51,7 +52,14 @@ export function SpaceSwitcher({ spaces, currentSpaceId }: Props) {
         return
       }
       setOpen(false)
-      router.refresh()
+      // 在「具体资源 ID」页面（/items/[id]）：切完空间后该 ID 在新空间可能不存在/无权限，
+      // 跳回列表更合理。其他 per-space 列表页（/items / /locations 等）切完自然显示新空间数据，
+      // 不需要重定向；非空间页（/ / /admin/members 等）也不动。
+      if (/^\/items\/\d+/.test(pathname ?? "")) {
+        router.push("/items")
+      } else {
+        router.refresh()
+      }
     })
   }
 
