@@ -2,6 +2,7 @@
   "name": "nage",
   "version": "1.4.0",
   "private": true,
+  "packageManager": "pnpm@11.5.2",
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
