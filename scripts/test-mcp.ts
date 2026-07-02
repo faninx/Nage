@@ -157,6 +157,84 @@ async function main() {
     )
     console.log("  ✓ 已清掉 alice 的 admin 空间成员行")
   }
+
+  // 种基础数据（让后续 list_*/search 断言不为空）
+  // categories
+  const seedCats = ["工具", "食品", "电子"]
+  for (const name of seedCats) {
+    const exists = db
+      .prepare("SELECT 1 FROM categories WHERE space_id=? AND name=?")
+      .get(adminSpace.id, name)
+    if (!exists) {
+      db.prepare("INSERT INTO categories (space_id, name) VALUES (?, ?)").run(
+        adminSpace.id,
+        name
+      )
+    }
+  }
+  // tags
+  const seedTags = ["常用", "重要", "待整理"]
+  for (const name of seedTags) {
+    const exists = db
+      .prepare("SELECT 1 FROM tags WHERE space_id=? AND name=?")
+      .get(adminSpace.id, name)
+    if (!exists) {
+      db.prepare("INSERT INTO tags (space_id, name, color) VALUES (?, ?, ?)").run(
+        adminSpace.id,
+        name,
+        "#888888"
+      )
+    }
+  }
+  // 1 个 location（root）
+  const seedLocExists = db
+    .prepare("SELECT 1 FROM locations WHERE space_id=? AND parent_id IS NULL")
+    .get(adminSpace.id)
+  if (!seedLocExists) {
+    db.prepare("INSERT INTO locations (space_id, name) VALUES (?, ?)").run(
+      adminSpace.id,
+      "E2E Root"
+    )
+  }
+  // 1 个 item
+  const itemExists = db
+    .prepare("SELECT 1 FROM items WHERE space_id=? LIMIT 1")
+    .get(adminSpace.id)
+  let seedItemId: number
+  if (!itemExists) {
+    const r = db
+      .prepare(
+        "INSERT INTO items (space_id, name, quantity) VALUES (?, ?, ?) RETURNING id"
+      )
+      .get(adminSpace.id, "E2E 种子物品", 1) as { id: number }
+    seedItemId = r.id
+  } else {
+    seedItemId = (db
+      .prepare("SELECT id FROM items WHERE space_id=? LIMIT 1")
+      .get(adminSpace.id) as { id: number }).id
+  }
+  // 1 张图（写文件 + item_images 记录）— 给 M10 uploads 鉴权测试用
+  const imgExists = db
+    .prepare("SELECT 1 FROM item_images WHERE item_id=?")
+    .get(seedItemId)
+  if (!imgExists) {
+    const { writeFileSync, mkdirSync } = await import("node:fs")
+    const { resolve } = await import("node:path")
+    const imgDir = resolve(process.cwd(), "data", "uploads", "items", String(seedItemId))
+    mkdirSync(imgDir, { recursive: true })
+    // 最小有效 JPEG（1x1 白像素，~125 字节）
+    const tinyJpeg = Buffer.from(
+      "/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/2wBDAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AL+AB//Z",
+      "base64"
+    )
+    const imgName = "1.jpg"
+    writeFileSync(resolve(imgDir, imgName), tinyJpeg)
+    db.prepare("INSERT INTO item_images (item_id, path) VALUES (?, ?)").run(
+      seedItemId,
+      `items/${seedItemId}/${imgName}`
+    )
+  }
+  console.log("  ✓ 种子数据：3 categories / 3 tags / 1 location / 1 item + 1 image")
   console.log()
 
   // ----------------------------------------------------------
