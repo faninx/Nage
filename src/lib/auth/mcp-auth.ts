@@ -22,15 +22,15 @@ import { createHash } from "node:crypto"
 import type { NextRequest } from "next/server"
 import { eq } from "drizzle-orm"
 import { db } from "@/lib/db"
-import { mcpTokens } from "@/lib/db/schema"
+import { mcpTokens, type McpScope } from "@/lib/db/schema"
 import { getSession } from "./session"
 
 const BEARER_PREFIX = "nage_mcp_"
 const SECRET_LEN = 43 // base64url(32 bytes) unpadded
 
 export type McpAuth =
-  | { userId: number; source: "cookie" }
-  | { userId: number; source: "bearer"; tokenId: number }
+  | { userId: number; source: "cookie"; scope: "editor" }
+  | { userId: number; source: "bearer"; tokenId: number; scope: McpScope }
   | null
 
 export async function resolveMcpAuth(req: NextRequest): Promise<McpAuth> {
@@ -41,7 +41,7 @@ export async function resolveMcpAuth(req: NextRequest): Promise<McpAuth> {
       const secret = raw.slice(BEARER_PREFIX.length)
       const hash = createHash("sha256").update(secret).digest("hex")
       const [row] = await db
-        .select({ id: mcpTokens.id, userId: mcpTokens.userId })
+        .select({ id: mcpTokens.id, userId: mcpTokens.userId, scope: mcpTokens.scope })
         .from(mcpTokens)
         .where(eq(mcpTokens.tokenHash, hash))
         .limit(1)
@@ -52,12 +52,13 @@ export async function resolveMcpAuth(req: NextRequest): Promise<McpAuth> {
           .set({ lastUsedAt: new Date() })
           .where(eq(mcpTokens.id, row.id))
           .catch(() => {})
-        return { userId: row.userId, source: "bearer", tokenId: row.id }
+        return { userId: row.userId, source: "bearer", tokenId: row.id, scope: row.scope }
       }
     }
     // Authorization 存在但格式错 / token 不存在 → 不再 fallback（明确意图）
     return null
   }
   const s = await getSession()
-  return s ? { userId: s.user.id, source: "cookie" } : null
+  // Cookie 鉴权默认 editor（用户本人登录 = 全权）
+  return s ? { userId: s.user.id, source: "cookie", scope: "editor" } : null
 }

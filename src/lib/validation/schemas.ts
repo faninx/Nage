@@ -300,13 +300,15 @@ export const ItemListSearchSchema = z.object({
 })
 
 // ============================================================
-// MCP 令牌（M8.1）
+// MCP 令牌（M8.1+）
 // ============================================================
 export const CreateMcpTokenSchema = z.object({
   name: z
     .string()
     .min(1, "名称不能为空")
     .max(50, "名称最长 50 字"),
+  // M8.2 起：scope 二档；reader=只读；editor=可调写工具
+  scope: z.enum(["reader", "editor"]).default("reader"),
 })
 
 export const RevokeMcpTokenSchema = z.object({

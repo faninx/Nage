@@ -225,7 +225,12 @@ export const loginAttempts = sqliteTable("login_attempts", {
 // MCP Bearer 令牌（M8.1 起：让外部 AI agent 用 Bearer token 调 Nage）
 // 粒度：per-user（用户级）。token 不绑空间，工具调用时 spaceId 在 input 里校验。
 // hash：SHA-256 hex（256-bit 随机 + indexed unique 已够；不用 bcrypt 拖性能）
+// scope：reader / editor（M8.2 起）。reader 只读；editor 可调用写工具。
 // ============================================================
+
+export const MCP_SCOPES = ["reader", "editor"] as const
+export type McpScope = (typeof MCP_SCOPES)[number]
+
 export const mcpTokens = sqliteTable(
   "mcp_tokens",
   {
@@ -238,6 +243,7 @@ export const mcpTokens = sqliteTable(
     tokenHash: text("token_hash").notNull().unique(),
     // secret 后 4 位，UI 列表识别用（高熵随机泄露 4/256 bits 可忽略）
     lastFour: text("last_four").notNull(),
+    scope: text("scope", { enum: MCP_SCOPES }).notNull().default("reader"),
     createdAt: integer("created_at", { mode: "timestamp" })
       .notNull()
       .default(sql`(unixepoch())`),

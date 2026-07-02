@@ -23,6 +23,11 @@ export const RPC_ERROR = {
       "未认证：请提供 nage_session cookie 或 Authorization: Bearer nage_mcp_<token>",
   },
   forbidden: { code: -32001, message: "无权访问该空间" },
+  // M8.2：caller scope 不够（如 reader 想调写工具）
+  insufficientScope: {
+    code: -32002,
+    message: "此操作需要更高的 MCP token scope",
+  },
 } as const
 
 export type RpcErrorDef = (typeof RPC_ERROR)[keyof typeof RPC_ERROR]
@@ -32,12 +37,12 @@ export type JsonRpcError = { code: number; message: string; data?: unknown }
 /**
  * 构造一个 JSON-RPC error 响应对象。
  * @param id  对端请求的 id（如果请求不合法可以是 null）
- * @param e   错误定义（来自 RPC_ERROR）
+ * @param e   错误定义（来自 RPC_ERROR 或任意 {code, message}）
  * @param data 可选，附加诊断信息（如 zod issues）
  */
 export function rpcError(
   id: unknown,
-  e: RpcErrorDef,
+  e: { code: number; message: string } | RpcErrorDef,
   data?: unknown
 ): { jsonrpc: "2.0"; id: unknown; error: JsonRpcError } {
   return {

@@ -1,9 +1,6 @@
-// M8.1 MCP Server 端到端验收（只读 MVP）：
-//   - /api/mcp 双轨鉴权（Bearer + cookie）
-//   - Origin 校验
-//   - 5 个 read 工具（list_locations / list_categories / list_tags / search_items / get_item）
-//   - 空间级 ACL（hasSpaceAccess）
-//   - 负例：token 错 / 没权限 / 参数错
+// M8.1 + M8.2 MCP Server 端到端验收：
+//   M8.1：只读 MVP — 5 个 read 工具 + 双轨鉴权 + 空间 ACL
+//   M8.2：写工具 — create_item / update_item / delete_item + token scope (reader/editor)
 //
 // 用法：node node_modules/tsx/dist/cli.mjs scripts/test-mcp.ts
 //
@@ -21,7 +18,7 @@ import Database from "better-sqlite3"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 
-const BASE = "http://localhost:3000"
+const BASE = process.env.MCP_TEST_BASE ?? "http://localhost:3000"
 const MCP_URL = `${BASE}/api/mcp`
 const secret = new TextEncoder().encode(process.env.JWT_SECRET!)
 
@@ -39,7 +36,11 @@ async function makeCookie(userId: number, username: string, role: "admin" | "mem
   return `nage_session=${token}`
 }
 
-function makeBearer(userId: number, name: string): { token: string; hash: string; lastFour: string } {
+function makeBearer(
+  userId: number,
+  name: string,
+  scope: "reader" | "editor" = "reader"
+): { token: string; hash: string; lastFour: string; scope: "reader" | "editor" } {
   const sec = randomBytes(32).toString("base64url")
   const token = `nage_mcp_${sec}`
   const hash = createHash("sha256").update(sec).digest("hex")
@@ -47,10 +48,10 @@ function makeBearer(userId: number, name: string): { token: string; hash: string
   // 直接插 DB（绕过 Server Action；E2E 不走 action）
   const db = new Database(process.env.DATABASE_URL || "./data/nage.db")
   db.prepare(
-    "INSERT INTO mcp_tokens (user_id, name, token_hash, last_four) VALUES (?, ?, ?, ?)"
-  ).run(userId, name, hash, lastFour)
+    "INSERT INTO mcp_tokens (user_id, name, token_hash, last_four, scope) VALUES (?, ?, ?, ?, ?)"
+  ).run(userId, name, hash, lastFour, scope)
   db.close()
-  return { token, hash, lastFour }
+  return { token, hash, lastFour, scope }
 }
 
 async function withClient(opts: {
@@ -319,8 +320,9 @@ async function main() {
   // 【7】Bearer 鉴权路径：直接插 mcp_tokens 行，重开 client 走 Bearer
   // ----------------------------------------------------------
   console.log("【7】Bearer 鉴权路径")
-  const bearer = makeBearer(admin.id, "e2e_test")
-  console.log(`  ✓ 已为 admin 生成 e2e_test token (尾号 …${bearer.lastFour})`)
+  // editor scope（后面 M8.2 写工具测试要复用这个 client）
+  const bearer = makeBearer(admin.id, "e2e_test", "editor")
+  console.log(`  ✓ 已为 admin 生成 e2e_test token (尾号 …${bearer.lastFour}, scope=${bearer.scope})`)
   const bearerClient = await withClient({ bearer: bearer.token })
   const bearerToolRes = await bearerClient.callTool({
     name: "list_tags",
@@ -342,15 +344,124 @@ async function main() {
   console.log()
 
   // ----------------------------------------------------------
-  // 【8】清理测试数据
+  // 【8】M8.2 写工具：reader scope 应被拒；editor scope 应成功
   // ----------------------------------------------------------
-  console.log("【8】清理测试数据")
-  db.prepare("DELETE FROM mcp_tokens WHERE name='e2e_test'").run()
-  console.log("  ✅ e2e_test token 已删")
+  console.log("【8】M8.2 写工具 + scope 校验")
+
+  // 8a) reader token 调 create_item → -32002 insufficientScope
+  const readerBearer = makeBearer(admin.id, "e2e_reader")
+  const readerClient = await withClient({ bearer: readerBearer.token })
+  const readerRes = await readerClient.callTool({
+    name: "create_item",
+    arguments: { spaceId: adminSpace.id, name: "应该被拒" },
+  })
+  if (!readerRes.isError) throw new Error("❌ reader scope 调写工具应被拒")
+  const readerText = textOf(readerRes)
+  if (!readerText.includes("-32002")) {
+    throw new Error(`❌ 错误码不对: ${readerText}`)
+  }
+  console.log("  ✅ reader scope 调 create_item → -32002 insufficientScope")
+
+  // 8b) editor token（已存在的 bearer）调 create_item → 成功
+  const editorClient = bearerClient
+  const createRes = await editorClient.callTool({
+    name: "create_item",
+    arguments: {
+      spaceId: adminSpace.id,
+      name: "E2E 测试物品",
+      description: "由 MCP 测试脚本创建",
+      quantity: 1,
+      expiredAt: "2027-01-01T00:00:00.000Z",
+    },
+  })
+  if (createRes.isError) throw new Error(`❌ editor create_item 失败: ${textOf(createRes)}`)
+  const createData = JSON.parse(textOf(createRes))
+  if (typeof createData.id !== "number") throw new Error("❌ create_item 返回无 id")
+  console.log(`  ✅ editor create_item → id=${createData.id}`)
+
+  // 8c) update_item
+  // 注：M8.2 写工具是 full-replace 语义（不是 partial update），caller 必传所有字段
+  const updateRes = await editorClient.callTool({
+    name: "update_item",
+    arguments: {
+      id: createData.id,
+      name: "E2E 测试物品 v2",
+      quantity: 5,
+      expiredAt: "2027-01-01T00:00:00.000Z", // 必传（M8.3+ 再做 partial）
+    },
+  })
+  if (updateRes.isError) throw new Error(`❌ update_item 失败: ${textOf(updateRes)}`)
+  console.log(`  ✅ editor update_item(id=${createData.id}) 成功`)
+
+  // 8d) get_item 验证修改
+  const getRes = await editorClient.callTool({
+    name: "get_item",
+    arguments: { spaceId: adminSpace.id, itemId: createData.id },
+  })
+  if (getRes.isError) throw new Error("❌ get_item 失败")
+  const getData = JSON.parse(textOf(getRes))
+  if (getData.item.name !== "E2E 测试物品 v2") throw new Error(`❌ 名字没更新: ${getData.item.name}`)
+  if (getData.item.quantity !== 5) throw new Error(`❌ 数量没更新: ${getData.item.quantity}`)
+  if (!getData.item.expiredAt) throw new Error("❌ expiredAt 未保存")
+  console.log(
+    `  ✅ get_item 验证：name="${getData.item.name}", quantity=${getData.item.quantity}, expiredAt=${getData.item.expiredAt.slice(0, 10)}`
+  )
+
+  // 8e) delete_item
+  const deleteRes = await editorClient.callTool({
+    name: "delete_item",
+    arguments: { id: createData.id },
+  })
+  if (deleteRes.isError) throw new Error(`❌ delete_item 失败: ${textOf(deleteRes)}`)
+  console.log(`  ✅ editor delete_item(id=${createData.id}) 成功`)
+
+  // 8f) 再 get 应拿不到
+  const getAfterDelete = await editorClient.callTool({
+    name: "get_item",
+    arguments: { spaceId: adminSpace.id, itemId: createData.id },
+  })
+  if (getAfterDelete.isError) throw new Error("❌ get_item 自身失败")
+  const afterData = JSON.parse(textOf(getAfterDelete))
+  if (afterData.item !== null) throw new Error("❌ 删除后 item 应为 null")
+  console.log("  ✅ delete 后 get_item → item=null")
+
+  // 8g) reader token 不能用 editor 能力调任何写工具
+  // 必传所有必填字段（schema 在 scope 检查前就拒了缺字段）
+  const readerUpdateRes = await readerClient.callTool({
+    name: "update_item",
+    arguments: { id: 1, name: "x", quantity: 1 },
+  })
+  if (!readerUpdateRes.isError || !textOf(readerUpdateRes).includes("-32002")) {
+    throw new Error(`❌ reader update_item 应被拒: ${textOf(readerUpdateRes)}`)
+  }
+  console.log("  ✅ reader scope 调 update_item → -32002")
+
+  // 8h) expiredAt 格式错 → -32602
+  const badDateRes = await editorClient.callTool({
+    name: "create_item",
+    arguments: {
+      spaceId: adminSpace.id,
+      name: "坏日期",
+      expiredAt: "not-a-date",
+    },
+  })
+  if (!badDateRes.isError) throw new Error("❌ 坏日期应被拒")
+  if (!textOf(badDateRes).includes("-32602")) {
+    throw new Error(`❌ 错误码不对: ${textOf(badDateRes)}`)
+  }
+  console.log("  ✅ expiredAt='not-a-date' → -32602 invalid args")
+  console.log()
+
+  // ----------------------------------------------------------
+  // 【9】清理测试数据
+  // ----------------------------------------------------------
+  console.log("【9】清理测试数据")
+  db.prepare("DELETE FROM mcp_tokens WHERE name IN ('e2e_test', 'e2e_reader')").run()
+  console.log("  ✅ e2e_test / e2e_reader token 已删")
   console.log()
 
   db.close()
-  console.log("🎉 M8.1 MCP Server 验收全部通过！")
+  console.log("🎉 M8.1 + M8.2 MCP Server 验收全部通过！")
 }
 
 main().catch((e) => {

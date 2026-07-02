@@ -28,7 +28,10 @@ export async function createMcpTokenAction(
   formData: FormData
 ): Promise<ActionState & { token?: string; tokenId?: number; lastFour?: string }> {
   const me = await requireSession()
-  const parsed = CreateMcpTokenSchema.safeParse({ name: formData.get("name") })
+  const parsed = CreateMcpTokenSchema.safeParse({
+    name: formData.get("name"),
+    scope: formData.get("scope") || undefined,
+  })
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? "参数错误" }
   }
@@ -45,6 +48,7 @@ export async function createMcpTokenAction(
       name: parsed.data.name,
       tokenHash: hash,
       lastFour,
+      scope: parsed.data.scope,
     })
     .returning({ id: mcpTokens.id })
 
@@ -77,6 +81,7 @@ export async function listMcpTokensAction(): Promise<McpTokenListItem[]> {
       id: mcpTokens.id,
       name: mcpTokens.name,
       lastFour: mcpTokens.lastFour,
+      scope: mcpTokens.scope,
       createdAt: mcpTokens.createdAt,
       lastUsedAt: mcpTokens.lastUsedAt,
     })
@@ -87,6 +92,7 @@ export async function listMcpTokensAction(): Promise<McpTokenListItem[]> {
     id: r.id,
     name: r.name,
     lastFour: r.lastFour,
+    scope: r.scope,
     createdAt: r.createdAt.toISOString(),
     lastUsedAt: r.lastUsedAt ? r.lastUsedAt.toISOString() : null,
   }))

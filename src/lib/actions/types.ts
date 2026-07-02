@@ -8,6 +8,7 @@ export type McpTokenListItem = {
   id: number
   name: string
   lastFour: string
+  scope: "reader" | "editor"
   createdAt: string // ISO
   lastUsedAt: string | null // ISO
 }

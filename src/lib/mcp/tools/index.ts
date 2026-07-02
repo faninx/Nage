@@ -1,6 +1,6 @@
 /**
- * 注册所有 MCP 读工具到给定 McpServer 实例。
- * 写工具在 M8.2+ 加。
+ * 注册所有 MCP 工具到给定 McpServer 实例。
+ * M8.1 = 5 个读工具；M8.2 = 3 个写工具（editor scope）。
  */
 
 import "server-only"
@@ -12,6 +12,7 @@ import {
   ListTagsTool,
   SearchItemsTool,
 } from "./read"
+import { CreateItemTool, DeleteItemTool, UpdateItemTool } from "./write"
 
 export function registerReadTools(server: McpServer): void {
   for (const tool of [
@@ -20,6 +21,9 @@ export function registerReadTools(server: McpServer): void {
     ListTagsTool,
     SearchItemsTool,
     GetItemTool,
+    CreateItemTool,
+    UpdateItemTool,
+    DeleteItemTool,
   ]) {
     // McpServer.registerTool 第 3 参数是 handler；
     // SDK 内部会拿 inputSchema 做 zod safeParse，handler 收到已 parse 的 args

@@ -14,6 +14,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Table,
   TableBody,
   TableCell,
@@ -21,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Badge } from "@/components/ui/badge"
 import { useConfirm } from "@/components/ui/confirm-dialog"
 import { RequiredMark } from "@/components/ui/required-mark"
 import { toast } from "sonner"
@@ -149,7 +157,7 @@ export function McpTokensClient({ initial }: Props) {
             <DialogHeader>
               <DialogTitle>新建 MCP 令牌</DialogTitle>
               <DialogDescription>
-                给令牌起个名字（例如"Claude Desktop on MBP"），方便以后识别。
+                给令牌起个名字（例如&ldquo;Claude Desktop on MBP&rdquo;），方便以后识别。
               </DialogDescription>
             </DialogHeader>
             <form action={createFormAction} className="space-y-3">
@@ -166,6 +174,21 @@ export function McpTokensClient({ initial }: Props) {
                   disabled={createPending}
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="t-scope">作用域</Label>
+                <Select name="scope" defaultValue="reader">
+                  <SelectTrigger className="w-full" id="t-scope">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="reader">只读（reader）</SelectItem>
+                    <SelectItem value="editor">可写（editor）</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  只读：仅查询数据；可写：能新增/修改/删除物品。建议给自动 agent 用只读，需要记账再发可写。
+                </p>
+              </div>
               <DialogFooter showCloseButton>
                 <Button type="submit" disabled={createPending}>
                   {createPending ? "生成中…" : "生成"}
@@ -181,6 +204,7 @@ export function McpTokensClient({ initial }: Props) {
           <TableHeader>
             <TableRow>
               <TableHead>名称</TableHead>
+              <TableHead>作用域</TableHead>
               <TableHead>令牌尾号</TableHead>
               <TableHead>创建时间</TableHead>
               <TableHead>最后使用</TableHead>
@@ -190,14 +214,25 @@ export function McpTokensClient({ initial }: Props) {
           <TableBody>
             {initial.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                  还没有令牌。点击右上角"新建令牌"创建第一个。
+                <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                  还没有令牌。点击右上角&ldquo;新建令牌&rdquo;创建第一个。
                 </TableCell>
               </TableRow>
             ) : (
               initial.map((t) => (
                 <TableRow key={t.id}>
                   <TableCell className="font-medium">{t.name}</TableCell>
+                  <TableCell>
+                    {t.scope === "editor" ? (
+                      <Badge className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/20 hover:bg-amber-500/20">
+                        可写
+                      </Badge>
+                    ) : (
+                      <Badge className="bg-muted text-muted-foreground border-border hover:bg-muted/80">
+                        只读
+                      </Badge>
+                    )}
+                  </TableCell>
                   <TableCell className="font-mono text-xs text-muted-foreground">
                     …{t.lastFour}
                   </TableCell>
