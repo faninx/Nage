@@ -42,6 +42,14 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc* ./
 # （会把 @img/sharp-linux-x64 加进 lockfile，但 Docker 里 lockfile 改动不传回 host）。
 ENV npm_config_target_platform=linux
 ENV npm_config_target_cpu=x64
+# 强制 pnpm 装 Linux x64 的原生 binding（@img/sharp-linux-x64 / esbuild 等）。
+# 不写的话，如果 pnpm-lock.yaml 是在 Windows / macOS host 上生成的，会装那个
+# 平台的 binary → Linux 容器跑 'Could not load sharp module'。
+#
+# 注意：不能用 --frozen-lockfile！lockfile 是 host 生成的，可能只有 win32/darwin 的
+# optional dep 路径；frozen-lockfile 严格按 lockfile 装，platform 换了也拒绝重新 resolve。
+# 这里 drop frozen-lockfile，让 pnpm 根据 target-platform=linux 重新 resolve optional deps
+# （会把 @img/sharp-linux-x64 加进 lockfile，但 Docker 里 lockfile 改动不传回 host）。
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store,sharing=locked     pnpm config set registry https://registry.npmmirror.com     && pnpm install --prefer-offline
 
 # ─── Stage 2: 构建 Next.js 应用 ─────────────────────────────────
@@ -126,6 +134,14 @@ COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/detect-libc@*/node_mo
 # semver 是 sharp 的 transitive dep，sharp/libvips.js 走 sub-path require
 # （semver/functions/coerce 等），跟 detect-libc 同根因。直接 COPY sharp 用的版本（7.8.3）。
 COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/semver@7.8.3/node_modules/semver ./node_modules/semver
+# @img/sharp-linux-x64 是 sharp 的 native binary（.node 文件，require 加载）。
+# pnpm 不把 optional dep hoist 到顶层 node_modules/@img/，所以 next.config.ts 的
+# ./node_modules/@img/**/* 规则匹配不到 → standalone 漏掉 → 启动报
+# 'Could not load the sharp module using the linux-x64 runtime'。
+# 注意：env npm_config_target_platform=linux 会让 pnpm 在 deps 阶段装 Linux binary，
+# 但 pnpm 把 optional dep 放 .pnpm/@img+sharp-linux-x64@*/node_modules/@img/sharp-linux-x64/，
+# 不是顶层。Dockerfile 显式 COPY 平铺到顶层 ./node_modules/@img/sharp-linux-x64 修。
+COPY --from=deps --chown=nage:nage /app/node_modules/.pnpm/@img+sharp-linux-x64@*/node_modules/@img/sharp-linux-x64 ./node_modules/@img/sharp-linux-x64
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
