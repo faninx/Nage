@@ -95,7 +95,6 @@ export function SpaceSettingsClient({ spaceId, spaceName, currentUserId, initial
   useEffect(() => {
     setRenameValue(spaceName)
   }, [spaceName])
-  const [deleteOpen, setDeleteOpen] = useState(false)
 
   // 搜索用户（250ms 防抖，避免每按一键都打一次服务端）
   useEffect(() => {
@@ -420,27 +419,12 @@ export function SpaceSettingsClient({ spaceId, spaceName, currentUserId, initial
           </p>
         </CardHeader>
         <CardContent>
-          <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <DialogTrigger asChild>
-              <Button variant="destructive" size="sm">
-                <Trash2 className="size-4" />
-                删除此空间
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>删除空间「{spaceName}」？</DialogTitle>
-                <DialogDescription>
-                  该操作会删除该空间内的所有内容（位置/分类/标签/物品/图片），且不可恢复。
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter showCloseButton>
-                <Button variant="destructive" onClick={handleDeleteSpace}>
-                  确认删除
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          {/* 没有外层 Dialog——直接点按钮调 handleDeleteSpace，里面 useConfirm() 弹一次。
+              之前套 Dialog 是冗余（双层弹窗），跟 handleRemove 移除成员模式保持一致。 */}
+          <Button variant="destructive" size="sm" onClick={handleDeleteSpace}>
+            <Trash2 className="size-4" />
+            删除此空间
+          </Button>
         </CardContent>
       </Card>
 
