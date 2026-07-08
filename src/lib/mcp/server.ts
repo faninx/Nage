@@ -15,9 +15,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { registerReadTools } from "./tools/index"
 import { registerResources } from "./resources"
 import { registerPrompts } from "./prompts"
+import pkg from "../../../package.json"
 
 const SERVER_NAME = "nage"
-const SERVER_VERSION = "1.2.1" // M8.1 仍跑 v1.2.1；下次发版 bump
+// 跟 package.json version 同步（src/app/(app)/layout.tsx 的 APP_VERSION 同款模式）
+// 避免每次发版漏 bump —— 安全工具会扫到 MCP server info 暴露的版本号跟实际不符
+const SERVER_VERSION = pkg.version
 
 export function createMcpServer(): McpServer {
   const server = new McpServer({ name: SERVER_NAME, version: SERVER_VERSION })

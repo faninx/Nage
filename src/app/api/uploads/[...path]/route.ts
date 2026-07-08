@@ -11,13 +11,16 @@ import { resolveMcpAuth } from "@/lib/auth/mcp-auth"
 // → 所有请求都走到这个 route handler → 鉴权生效
 const UPLOADS_DIR = path.resolve(process.cwd(), "data", "uploads")
 
+// MIME 白名单。注意：故意不含 .svg —— SVG 可嵌入 `<script>` 执行 JS（Nage 上传管线
+// 走 sharp 转 jpg，实际用户不会上传 SVG，但万一有 .svg 落盘也拒绝服务）。
+// 不在白名单的扩展名会回落到 application/octet-stream（浏览器不会当图渲染），
+// 实际生产可加 404，但保守起见只拒识别。
 const MIME: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
   ".png": "image/png",
   ".webp": "image/webp",
   ".gif": "image/gif",
-  ".svg": "image/svg+xml",
 }
 
 /**

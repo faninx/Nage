@@ -57,6 +57,84 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+
+  // 安全响应头：合规 + 浏览器 XSS/CSRF 防护基线。
+  // CSP 注释里的来源都按 Nage 实际用法开的，没用到的全禁。
+  //   - 'unsafe-inline' for script-src：Next.js 16 hydration + next-themes 防 FOUC
+  //     内联脚本需要。nonce 模式更严但 Next 16 还在演进,先 inline 兜底。
+  //   - img-src 'self' data: blob:：data/ 是 sharp 处理后 next/image 的占位图格式,
+  //     blob: 是 next/image 缩略图 URL。
+  //   - frame-ancestors 'none'：替代 X-Frame-Options: DENY（现代浏览器）。
+  //   - connect-src 'self'：Server Actions + MCP API + WebSocket(暂无)。
+  // HSTS 只在 HTTPS 时设(生产通常反代后是 HTTPS)。dev 走 http 不需要。
+  // /api/uploads/* 单独覆盖：default-src 'none' 防 SVG 等执行(我们已经从 MIME 白名单
+  // 删了 .svg,这里是 defense-in-depth)。
+  async headers() {
+    const base = [
+      {
+        key: "Content-Security-Policy",
+        value: [
+          "default-src 'self'",
+          // Next 16 hydration + next-themes 内联防 FOUC 脚本需要 unsafe-inline
+          "script-src 'self' 'unsafe-inline'",
+          // shadcn/ui + Radix 部分组件用内联 style
+          "style-src 'self' 'unsafe-inline'",
+          "img-src 'self' data: blob:",
+          "font-src 'self' data:",
+          "connect-src 'self'",
+          "frame-ancestors 'none'",
+          "base-uri 'self'",
+          "form-action 'self'",
+          "object-src 'none'",
+        ].join("; "),
+      },
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      {
+        // 关掉用不到的浏览器能力（camera/mic/geo 等）。Nage 是纯 SSR + 图片存储,
+        // 完全不需要这些。
+        key: "Permissions-Policy",
+        value: [
+          "camera=()",
+          "microphone=()",
+          "geolocation=()",
+          "payment=()",
+          "usb=()",
+          "magnetometer=()",
+          "gyroscope=()",
+          "accelerometer=()",
+        ].join(", "),
+      },
+    ];
+
+    // uploads 路由:默认拒绝所有,只允许图片格式 + 二进制下载
+    const uploadsCsp = [
+      "default-src 'none'",
+      "img-src 'self'",
+      "style-src 'unsafe-inline'", // next/image 缩略图容器偶有 inline style
+      "connect-src 'none'",
+    ].join("; ");
+
+    return [
+      {
+        // 全局基础头：所有路由
+        source: "/:path*",
+        headers: base,
+      },
+      {
+        // uploads 路由额外加固（路由 handler 内部已经鉴权 + 删 .svg MIME，
+        // CSP 是 defense-in-depth：即使有人手动塞 SVG/HTML 进 data/uploads/
+        // 也不会执行）
+        source: "/api/uploads/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: uploadsCsp },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Cache-Control", value: "private, max-age=0, must-revalidate" },
+        ],
+      },
+    ];
+  },
 };
 
 export default withPWA(nextConfig);
