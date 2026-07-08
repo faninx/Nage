@@ -1,6 +1,6 @@
 {
   "name": "nage",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "private": true,
   "packageManager": "pnpm@11.5.2",
   "scripts": {

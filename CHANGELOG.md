@@ -5,6 +5,27 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.4] - 2026-07-08
+
+UX 修复 + 安全响应头。**0 数据库 schema 变化，0 数据迁移**。
+
+### 修复
+
+- **删除空间弹两次确认窗**（4e3a309）：去外层冗余 `<Dialog>`，按钮直接 `onClick={handleDeleteSpace}`，跟 `handleRemove` 模式对齐
+- **安全响应头全缺**（c4b994b）：next.config.ts 加 `headers()`——CSP / HSTS / X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy。`/api/uploads/*` 单独覆盖 `default-src 'none'` defense-in-depth
+- **uploads 路由允许 SVG XSS**（c4b994b）：MIME 白名单删 `.svg`（sharp 上传管线本身就转 jpg，SVG 走不进流程；删白名单是 defense-in-depth）
+- **MCP SERVER_VERSION 跟 package.json 不符**（c4b994b）：源码硬编码 "1.2.1"，改成动态 `import pkg from '../../../package.json'` 读 `pkg.version`（跟 `(app)/layout.tsx` APP_VERSION 同模式），发版不会再漏 bump
+
+### 升级指引
+
+```bash
+cd /opt/nage
+git fetch origin
+git checkout v1.4.4
+docker compose pull
+docker compose up -d
+```
+
 ## [1.4.3] - 2026-07-03
 
 Docker standalone 依赖修复合集（v1.4.1/v1.4.2 启动崩溃系列 bug）+ next-themes 暗黑模式改造。**0 数据库 schema 变化，0 数据迁移**。
