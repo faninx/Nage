@@ -19,6 +19,10 @@ import { RequiredMark } from "@/components/ui/required-mark"
 import { LocationTreeSelect, type LocNode } from "@/components/location-tree-select"
 import { TagsMultiSelect, type TagOpt } from "@/components/tags-multi-select"
 import { useConfirm } from "@/components/ui/confirm-dialog"
+import {
+  readLastAddLocation,
+  writeLastAddLocation,
+} from "@/lib/storage/last-add-location"
 import { deleteItemImageAction } from "@/lib/actions/images"
 import { MAX_IMAGES_PER_ITEM } from "@/lib/actions/types"
 import { ImagePlus, X, ArrowUp, ArrowDown, Camera } from "lucide-react"
@@ -328,7 +332,17 @@ export function ItemForm({
   const [cat, setCat] = useState<string>(
     item?.categoryId ? String(item.categoryId) : ITEM_FORM_UNSET
   )
-  const [locId, setLocId] = useState<number | null>(item?.locationId ?? null)
+  const [locId, setLocId] = useState<number | null>(() => {
+    if (mode === "edit") return item?.locationId ?? null
+    // create mode：从 localStorage 还原上次选择的位置（已删则回落 null）
+    return readLastAddLocation(locations)
+  })
+
+  function handleLocChange(id: number | null) {
+    setLocId(id)
+    // 只在新建时更新"上次位置"记忆；编辑不算"添加"
+    if (mode === "create") writeLastAddLocation(id)
+  }
   const [tagIds, setTagIds] = useState<number[]>(initialTagIds ?? [])
   const [expiredAt, setExpiredAt] = useState<string | null>(
     item?.expiredAt ? item.expiredAt.slice(0, 10) : null
@@ -438,7 +452,7 @@ export function ItemForm({
         <LocationTreeSelect
           locations={locations}
           value={locId}
-          onChange={setLocId}
+          onChange={handleLocChange}
           disabled={pending}
         />
         <input

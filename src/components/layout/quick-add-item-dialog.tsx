@@ -17,6 +17,10 @@ import { LocationTreeSelect, type LocNode } from "@/components/location-tree-sel
 import { createItemAction } from "@/lib/actions/items"
 import { type ActionState } from "@/lib/actions/types"
 import { RequiredMark } from "@/components/ui/required-mark"
+import {
+  readLastAddLocation,
+  writeLastAddLocation,
+} from "@/lib/storage/last-add-location"
 import { toast } from "sonner"
 
 export type QuickAddLoc = LocNode
@@ -35,7 +39,14 @@ export function QuickAddItemDialog({ open, onOpenChange, spaceId, locations }: P
     ActionState | undefined,
     FormData
   >(createItemAction, undefined)
-  const [locId, setLocId] = useState<number | null>(null)
+  const [locId, setLocId] = useState<number | null>(() =>
+    readLastAddLocation(locations)
+  )
+
+  function handleLocChange(id: number | null) {
+    setLocId(id)
+    writeLastAddLocation(id)
+  }
 
   useEffect(() => {
     if (state?.ok) {
@@ -45,10 +56,10 @@ export function QuickAddItemDialog({ open, onOpenChange, spaceId, locations }: P
     }
   }, [state, onOpenChange, router])
 
-  // 打开时重置位置选择
+  // 打开时还原上次记住的位置（位置已删 / 不在当前列表则回落 null）
   useEffect(() => {
-    if (open) setLocId(null)
-  }, [open])
+    if (open) setLocId(readLastAddLocation(locations))
+  }, [open, locations])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -125,7 +136,7 @@ export function QuickAddItemDialog({ open, onOpenChange, spaceId, locations }: P
             <LocationTreeSelect
               locations={locations}
               value={locId}
-              onChange={setLocId}
+              onChange={handleLocChange}
               disabled={pending}
             />
           </div>
