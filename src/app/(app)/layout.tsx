@@ -88,8 +88,8 @@ export default async function AppLayout({
       </header>
 
       <div className="flex-1 max-w-7xl w-full mx-auto flex">
-        {/* 侧栏（PC）：sticky 停在 header（h-14=56px）下，避免主区滚动时侧栏一起滚 */}
-        <aside className="hidden md:flex w-56 shrink-0 border-r py-4 pr-2 flex-col sticky top-14 self-start max-h-[calc(100dvh-3.5rem)] overflow-y-auto">
+        {/* 侧栏（PC）：sticky 停在 header（h-14=56px）下；h- 强制填满视口高度（nav 少时不留空白） */}
+        <aside className="hidden md:flex w-56 shrink-0 border-r py-4 pr-2 flex-col sticky top-14 self-start h-[calc(100dvh-3.5rem)]">
           <NavLinks items={navItems} />
           <div className="mt-auto pt-4 px-3 text-xs text-muted-foreground">
             v{APP_VERSION}

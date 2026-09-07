@@ -14,47 +14,44 @@ async function main() {
   await page.goto("http://localhost:3000/items")
   await page.waitForSelector("text=物品", { state: "visible" })
 
-  // 检查 sidebar computed style
+  // 检查 sidebar computed style + 几何尺寸
   const sidebar = page.locator("aside").first()
-  const beforeScroll = await sidebar.evaluate((el) => {
+  const measure = (el: Element) => {
     const cs = getComputedStyle(el)
+    const r = el.getBoundingClientRect()
     return {
       position: cs.position,
       top: cs.top,
       alignSelf: cs.alignSelf,
-      rect: el.getBoundingClientRect().top,
+      rectTop: r.top,
+      height: r.height,
+      viewport: window.innerHeight,
     }
-  })
+  }
+  const beforeScroll = await sidebar.evaluate(measure)
   console.log("滚动前:", beforeScroll)
+  // 断言：sidebar 高度 = 视口 - header（=56px），即填满整个左侧
+  const expectedH = beforeScroll.viewport - 56
+  if (Math.abs(beforeScroll.height - expectedH) > 1) {
+    console.log(`❌ sidebar 高度 ${beforeScroll.height} ≠ 理论 ${expectedH}`)
+    process.exit(1)
+  }
+  if (beforeScroll.position !== "sticky") {
+    console.log(`❌ sidebar position 不是 sticky`)
+    process.exit(1)
+  }
 
-  // 强制把页面加长（塞几个 items 让页面够长）。或者直接 window.scrollTo
+  // 滚动 600px 后再看 sidebar 位置（应该不变）
   await page.evaluate(() => window.scrollTo(0, 600))
   await page.waitForTimeout(200)
-
-  const afterScroll = await sidebar.evaluate((el) => {
-    const cs = getComputedStyle(el)
-    return {
-      position: cs.position,
-      top: cs.top,
-      alignSelf: cs.alignSelf,
-      rect: el.getBoundingClientRect().top,
-    }
-  })
+  const afterScroll = await sidebar.evaluate(measure)
   console.log("滚动后:", afterScroll)
 
-  // 截图证据
-  await page.screenshot({ path: "scripts/.sidebar-scrolled.png", fullPage: false })
-
-  // 断言：滚动后 sidebar 仍在视口顶部（≤ header 高度 56px）
-  if (afterScroll.rect > 80) {
-    console.log(`❌ 侧栏滚走了，top=${afterScroll.rect}`)
+  if (Math.abs(afterScroll.rectTop - beforeScroll.rectTop) > 1) {
+    console.log(`❌ 滚动后 sidebar 跑位：${beforeScroll.rectTop} → ${afterScroll.rectTop}`)
     process.exit(1)
   }
-  if (afterScroll.position !== "sticky") {
-    console.log(`❌ 侧栏 position 不是 sticky`)
-    process.exit(1)
-  }
-  console.log("✅ 侧栏 sticky 生效")
+  console.log("✅ 侧栏 sticky + 100% 高 双断言通过")
   await browser.close()
 }
 main()
