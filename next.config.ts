@@ -70,13 +70,18 @@ const nextConfig: NextConfig = {
   // /api/uploads/* 单独覆盖：default-src 'none' 防 SVG 等执行(我们已经从 MIME 白名单
   // 删了 .svg,这里是 defense-in-depth)。
   async headers() {
+    // dev 模式 React 需要 eval 重建 callstack（prod 不用）；放开 unsafe-eval，
+    // prod 仍保持严格（没有 eval 噪音 + 安全收益）
+    const scriptSrc =
+      process.env.NODE_ENV === "development"
+        ? "script-src 'self' 'unsafe-inline' 'unsafe-eval'"
+        : "script-src 'self' 'unsafe-inline'"
     const base = [
       {
         key: "Content-Security-Policy",
         value: [
           "default-src 'self'",
-          // Next 16 hydration + next-themes 内联防 FOUC 脚本需要 unsafe-inline
-          "script-src 'self' 'unsafe-inline'",
+          scriptSrc,
           // shadcn/ui + Radix 部分组件用内联 style
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data: blob:",
