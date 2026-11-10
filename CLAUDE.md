@@ -207,5 +207,5 @@ node scripts/loader-hook.mjs              # loader 钩子调试
 
 - **Docker 镜像**：`Dockerfile` 是 multi-stage，runtime 用 `node server.js`（standalone 入口）。生产部署完整指南见 `DEPLOY.md`，反代示例见 `docs/examples/`（Caddy / Nginx / Cloudflare Tunnel 任选，**反代 BYO**）
 - **备份恢复**：`scripts/backup.sh` 用 `sqlite3 .backup` 在线热备，30 天滚动；`scripts/backup-cron.example` 是 crontab 模板
-- **CI/CD**：`.github/workflows/docker-publish.yml`——push tag `v*` 时 buildx 多架构（amd64/arm64）→ 推 `ghcr.io/faninx/nage` + `faninx/nage`（Docker Hub）
+- **CI/CD**：`.github/workflows/docker-publish.yml`——push tag `v*` 时 buildx 多架构（amd64/arm64）→ 推 `ghcr.io/faninx/nage` + `faninx/nage-legacy`（Docker Hub）
 - **发布流程**：完成 M 阶段 → 用户说"提交" → `git commit` → 用户确认版本号 → `git tag v*` → push 触发 CI 自动构建推送

@@ -25,8 +25,10 @@ on:
 #                           → New Access Token → Read, Write, Delete）
 #   - GITHUB_TOKEN        : 自动提供，无需配置
 env:
-  GHCR_IMAGE: ghcr.io/${{ github.repository }}   # faninx/Nage → ghcr.io/faninx/nage
-  DH_IMAGE: docker.io/faninx/nage                # Docker Hub 镜像固定为 faninx/nage
+  # GHCR 镜像名跟随 GitHub 仓库名（faninx/Nage → ghcr.io/faninx/nage），改 GitHub 仓库名会自动跟着变。
+  # Docker Hub 仓库名写死：Docker Hub 不支持重命名，改名 = 新建仓库 + 改这里 + 重建 tag。
+  GHCR_IMAGE: ghcr.io/${{ github.repository }}
+  DH_IMAGE: docker.io/faninx/nage-legacy         # Docker Hub 镜像固定为 faninx/nage-legacy
 
 jobs:
   build:
