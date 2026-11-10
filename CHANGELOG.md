@@ -5,6 +5,38 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.4.5] - 2026-11-10
+
+UX 增强 + 布局修复 + **Docker Hub 镜像仓库改名**。**0 数据库 schema 变化，0 数据迁移**。
+
+### 新增
+
+- **添加物品弹窗记住上次选的位置**（`f5b8b52`）：两个添加入口——右下角悬浮「+」快速添加、物品列表页「添加物品」完整表单——共享同一份记忆（localStorage key `nage-last-add-location`）。打开弹窗自动预选上次的位置；写入时机是**选择时**而非提交时，所以选完取消、重开仍然保留。位置被删除或不在当前空间时自动回落「不选」。**编辑**物品时改位置不覆盖这份记忆（编辑不算"添加"）
+
+### 修复
+
+- **侧栏跟着主区一起滚动**（`06129be` / `3433bc1`）：物品多到页面出现滚动条时，PC 端左侧导航栏会跟着滚走。`<aside>` 加 `sticky top-14 self-start h-[calc(100dvh-3.5rem)]`——`top-14` 让侧栏黏在 h-14 高的 header 下方，`self-start` 覆盖 flex 默认的 `stretch`（stretch 会让 sticky 失效），`h-` 强制填满视口剩余高度（之前用 `max-h-` 只设上限，内容少时侧栏只有内容高度、底部大片空白）
+- **dev console 报 `eval() is not supported`**（`1cbcc04`）：v1.4.4 引入的 CSP `script-src 'self' 'unsafe-inline'` 缺 `'unsafe-eval'`，而 React 19 dev mode 会用 eval 重建 callstack。`next.config.ts` 按 `NODE_ENV` 区分——dev 加 `'unsafe-eval'`，**生产保持严格**（生产 React bundle 不调 eval）
+
+### 变更（⚠️ 拉取命令要改）
+
+- **Docker Hub 镜像仓库改名**（`f746e8b` / `a7ff3fd`）：本项目镜像从 `faninx/nage` 迁到 `faninx/nage-legacy`。Docker Hub 不支持重命名仓库，改名只能"新建仓库 + 重推 tag"，所以 CI 之后只推 `faninx/nage-legacy`，`faninx/nage` 不再更新
+  - **v1.4.5 及以后**：`docker pull faninx/nage-legacy:1.4.5`
+  - **v1.4.4 及以前**：仍在 `faninx/nage`，`docker pull faninx/nage:1.4.4`（本次不迁移历史 tag）
+  - GHCR 不变：`ghcr.io/faninx/nage`（跟 GitHub 仓库名绑定）
+  - 需要把历史 tag 也复制到新仓库时：`bash scripts/migrate-image-tags.sh`
+
+### 升级指引
+
+```bash
+cd /opt/nage
+git fetch origin
+git checkout v1.4.5
+docker compose pull
+docker compose up -d
+```
+
+只换镜像，0 配置变化。已有部署如果用的是 `faninx/nage`，需同步改 `docker-compose.yml` 的 `image:` 为 `faninx/nage-legacy:1.4.5`。
 ## [1.4.4] - 2026-07-08
 
 UX 修复 + 安全响应头。**0 数据库 schema 变化，0 数据迁移**。
