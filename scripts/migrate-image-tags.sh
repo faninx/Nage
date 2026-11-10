@@ -3,7 +3,14 @@
 #
 # 背景：Docker Hub 不支持重命名仓库，镜像改名的唯一途径是「新建仓库 + 重推 tag」。
 # 新仓库建好后跑这个脚本，把旧 tag 补过去，让 faninx/nage-legacy:1.4.4 这类
-# 历史版本在新仓库里也能拉到（否则新仓库只有下一个版本之后的 tag）。
+# 历史版本在新仓库里也能拉到。
+#
+# 为什么不用 docker pull/tag/push：
+#   faninx/nage 的镜像是多架构 OCI index（linux/amd64 + linux/arm64），
+#   并且带 SBOM / provenance 的 attestation manifest（platform=unknown/unknown）。
+#   pull/tag/push 只能搬本机架构那一层，attestation 直接丢失。
+#   docker buildx imagetools create 走的是 registry 层的 manifest 复制，
+#   不下载任何镜像层，完整保留多架构 + attestation。
 #
 # 前置条件：
 #   1. hub.docker.com 已手动创建 faninx/nage-legacy 仓库（public）
@@ -11,8 +18,9 @@
 #      docker login   # 用户名 + Access Token（hub.docker.com/settings/security）
 #
 # 用法：
-#   bash scripts/migrate-image-tags.sh            # 迁移全部历史 tag
-#   bash scripts/migrate-image-tags.sh 1.4.4      # 只迁移指定 tag
+#   bash scripts/migrate-image-tags.sh              # 迁移全部历史 tag
+#   bash scripts/migrate-image-tags.sh 1.4.4        # 只迁移指定 tag
+#   DRY_RUN=1 bash scripts/migrate-image-tags.sh    # 只打印结果，不真推
 #
 # 幂等：已存在的 tag 会被覆盖，不报错。
 
@@ -44,32 +52,17 @@ fi
 echo "源仓库 : $SRC"
 echo "目标库 : $DST"
 echo "tag 数 : ${#TAGS[@]}"
+if [ "${DRY_RUN:-0}" = "1" ]; then echo "模式   : DRY-RUN（不实际推送）"; fi
 echo
 
-# 首选 skopeo：直接复制 manifest list，不依赖本机 daemon 的架构支持，
-# 多架构（amd64/arm64）原样保留。
-# 退路 docker pull/tag/push：需要本机 daemon 支持多架构存储
-# （Docker Engine 29+ 默认 containerd image store 可以；经典存储只能带单架构）。
-if command -v skopeo >/dev/null 2>&1; then
-  USE_SKOPEO=1
-else
-  USE_SKOPEO=0
-  echo "⚠ 没找到 skopeo，退回 docker pull/tag/push。"
-  echo "  如果本机是经典（非 containerd）镜像存储，多架构 tag 可能只推上去单架构。"
-  echo "  装 skopeo 可避免：https://github.com/containers/skopeo/releases"
-  echo
-fi
-
 for tag in "${TAGS[@]}"; do
-  echo "── $tag ──"
-  if [ "$USE_SKOPEO" = "1" ]; then
-    skopeo copy --all "docker://$SRC:$tag" "docker://$DST:$tag"
+  printf '%-10s -> %s:%s ... ' "$tag" "$DST" "$tag"
+  if [ "${DRY_RUN:-0}" = "1" ]; then
+    docker buildx imagetools create --dry-run -t "$DST:$tag" "$SRC:$tag" >/dev/null
   else
-    docker pull --platform linux/amd64,linux/arm64 "$SRC:$tag" >/dev/null
-    docker tag "$SRC:$tag" "$DST:$tag"
-    docker push "$DST:$tag" >/dev/null
+    docker buildx imagetools create -t "$DST:$tag" "$SRC:$tag" >/dev/null
   fi
-  echo "  ✓ $DST:$tag"
+  echo "✓"
 done
 
 echo
